@@ -1,0 +1,4 @@
+# hetzner.hcloud modules read api_token from the HCLOUD_TOKEN environment
+# variable, but the args rule treats it as a missing required argument.
+skip_list:
+  - args[module]

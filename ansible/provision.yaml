@@ -1,0 +1,65 @@
+- name: Provision Hetzner resources
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    public_rules:
+      - description: http
+        direction: in
+        protocol: tcp
+        port: "80"
+        source_ips: [0.0.0.0/0, "::/0"]
+      - description: https
+        direction: in
+        protocol: tcp
+        port: "443"
+        source_ips: [0.0.0.0/0, "::/0"]
+      - description: icmp
+        direction: in
+        protocol: icmp
+        source_ips: [0.0.0.0/0, "::/0"]
+    # allow-home-ip.sh finds this rule by its description.
+    home_rule:
+      - description: home
+        direction: in
+        protocol: tcp
+        port: "22"
+        source_ips: ["{{ home_ip }}/32"]
+    work_vpn_rule:
+      - description: work-vpn
+        direction: in
+        protocol: tcp
+        port: "22"
+        source_ips: "{{ work_vpn_ips }}"
+  tasks:
+    - name: Upload SSH public key
+      hetzner.hcloud.ssh_key:
+        name: "{{ ssh_key_name }}"
+        public_key: "{{ lookup('ansible.builtin.file', ssh_public_key_path | expanduser) }}"
+        state: present
+      tags: server
+
+    - name: Configure firewall
+      hetzner.hcloud.firewall:
+        name: "{{ firewall_name }}"
+        rules: "{{ public_rules + home_rule + (work_vpn_rule if work_vpn_ips else []) }}"
+        labels: "{{ server_labels }}"
+        state: present
+      tags: server
+
+    - name: Create server
+      hetzner.hcloud.server:
+        name: "{{ server_name }}"
+        server_type: "{{ server_type }}"
+        image: "{{ server_image }}"
+        location: "{{ server_location }}"
+        ssh_keys: ["{{ ssh_key_name }}"]
+        firewalls: ["{{ firewall_name }}"]
+        enable_ipv4: true
+        enable_ipv6: true
+        backups: false
+        delete_protection: true
+        rebuild_protection: true
+        labels: "{{ server_labels }}"
+        state: present
+      tags: server
