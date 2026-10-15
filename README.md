@@ -7,9 +7,9 @@ Ansible configuration for the shared Hetzner server that runs my hobby projects'
 1. Install the tools:
    ```sh
    brew install ansible ansible-lint shellcheck 1password-cli
-   ansible-galaxy collection install -r ansible/requirements.yaml -p .ansible/collections
+   ansible-galaxy collection install -r ansible/requirements.yaml
    ```
-   Homebrew's Ansible already includes `hetzner.hcloud`, which bundles the `hcloud` Python library it needs. The last command installs it into the project too, because `ansible-lint` doesn't see Homebrew's copy.
+   The last command installs the pinned `hetzner.hcloud` version into `.ansible/collections`, which `ansible.cfg` uses instead of the older copy bundled with Homebrew's Ansible. Run it again after `requirements.yaml` changes. The collection bundles the `hcloud` Python library it needs.
 2. Turn on the 1Password app's CLI integration (Settings → Developer → Integrate with 1Password CLI), so `op` unlocks with Touch ID.
 3. Secrets live in 1Password, in the `Private` vault:
    - `infra-ansible-vault`, field `password`: the Ansible Vault password. `ansible.cfg` reads it through `scripts/vault-password.sh`, so every command that needs it finds it on its own.
