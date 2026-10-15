@@ -18,7 +18,6 @@
         direction: in
         protocol: icmp
         source_ips: [0.0.0.0/0, "::/0"]
-    # allow-home-ip.sh finds this rule by its description.
     home_rule:
       - description: home
         direction: in
@@ -39,7 +38,7 @@
         rules: "{{ public_rules + home_rule }}"
         labels: "{{ server_labels }}"
         state: present
-      tags: server
+      tags: firewall
 
     - name: Create server
       hetzner.hcloud.server:

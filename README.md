@@ -6,37 +6,40 @@ Ansible configuration for the shared Hetzner server that runs my hobby projects'
 
 1. Install the tools:
    ```sh
-   brew install ansible ansible-lint hcloud jq shellcheck
+   brew install ansible ansible-lint shellcheck 1password-cli
    "$(brew --prefix ansible)/libexec/bin/pip" install hcloud
    ansible-galaxy collection install -r ansible/requirements.yaml -p .ansible/collections
    ```
    Homebrew's Ansible already includes `hetzner.hcloud`. The last command installs it into the project too, because `ansible-lint` doesn't see Homebrew's copy.
-2. Create a Hetzner Cloud API token with read and write access, and export it. Keep it in a password manager, never in the repo:
+2. Turn on the 1Password app's CLI integration (Settings → Developer → Integrate with 1Password CLI), so `op` unlocks with Touch ID.
+3. Secrets live in 1Password, in the `Private` vault:
+   - `infra-ansible-vault`, field `password`: the Ansible Vault password. `ansible.cfg` reads it through `scripts/vault-password.sh`, so every command that needs it finds it on its own.
+   - `hetzner-cloud-api`, field `api-token`: a Hetzner Cloud API token with read and write access.
+4. In each shell where you run Ansible, export the token:
    ```sh
-   export HCLOUD_TOKEN=...
+   export HCLOUD_TOKEN="$(op read op://Private/hetzner-cloud-api/api-token)"
    ```
+   `scripts/set-home-ip.sh` reads the token from 1Password on its own if it isn't exported.
 
 ## Provisioning
 
-`provision.yaml` creates the SSH key, firewall, server and DNS zone, using `~/.ssh/id_ed25519.pub` by default (override with `-e ssh_public_key_path=...`):
+`provision.yaml` creates the SSH key, firewall, server and DNS zone, using `~/.ssh/id_ed25519.pub` by default (override with `-e ssh_public_key_path=...`). Store the home IP first (see below), then run:
 
 ```sh
 ansible-playbook ansible/provision.yaml
 ```
 
-Running it again applies only what changed, and a run with no changes should report none. Use `--tags server` or `--tags dns` to run one part.
+Running it again applies only what changed, and a run with no changes should report none. Use `--tags server`, `--tags firewall` or `--tags dns` to run one part.
 
-The firewall's `home` SSH rule is set to the public IP of the machine running the playbook. When running it from somewhere else, pass `-e home_ip=<home IP>`.
+## Setting the home IP
 
-## Updating the home IP
-
-When the home IP changes, run this from home:
+The firewall allows SSH only from the home IP, which is stored encrypted in `ansible/group_vars/all/home_ip.vault.yaml`. To set it, or to update it after it changes, run this from home:
 
 ```sh
-scripts/allow-home-ip.sh
+scripts/set-home-ip.sh
 ```
 
-It changes only the `home` rule, and open SSH sessions survive the change.
+It stores the current public IP, updates only the firewall, and asks you to commit the vault file. Running the playbook from another network doesn't change the rule. Open SSH sessions survive the change.
 
 ## DNS cutover (one-off)
 

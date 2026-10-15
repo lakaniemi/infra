@@ -9,6 +9,4 @@ ssh_key_name: laptop
 ssh_public_key_path: ~/.ssh/id_ed25519.pub
 
 firewall_name: hobby
-# Re-running provision.yaml points the home SSH rule at whatever IP it runs from.
-# Override with -e home_ip=... when running from elsewhere.
-home_ip: "{{ lookup('ansible.builtin.url', 'https://api.ipify.org') | trim }}"
+# home_ip comes from home_ip.vault.yaml, written by scripts/set-home-ip.sh.

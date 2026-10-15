@@ -43,10 +43,10 @@ Configuration for the shared Hetzner server that runs my hobby projects' APIs an
 - **Cloud Firewall:**
   - Inbound: allow TCP 80 and 443 from anywhere, plus ICMP.
   - TCP 22 only from a `home` rule (my current home IP).
-  - My home IP isn't guaranteed to stay the same, so `scripts/allow-home-ip.sh` replaces the `home` rule with my current public IP. It uses the `hcloud` CLI and my Hetzner API token on my laptop.
+  - The home IP is stored in the repo, encrypted with Ansible Vault (`home_ip.vault.yaml`), so the repo stays the source of truth and the rule never depends on the network the playbook runs from. My home IP isn't guaranteed to stay the same, so `scripts/set-home-ip.sh` stores my current public IP and applies only the firewall (`--tags firewall`). Each change is a commit.
   - Rule changes affect only new connections, so an open SSH session survives them. Hetzner doesn't document how fast changes apply; in practice it's seconds.
   - This firewall filters traffic before it reaches the server. Docker's published ports bypass `ufw` on the server, so this is the firewall that counts.
-- **The Hetzner API token** stays on my laptop (e.g. in the `HCLOUD_TOKEN` environment variable or a password manager), never in the repo.
+- **The Hetzner API token and the Ansible Vault password** live in 1Password, so any computer signed in to it can run the playbooks. `ansible.cfg` gets the vault password through `scripts/vault-password.sh` (`op read`), and the token is exported as `HCLOUD_TOKEN`. Neither is ever in the repo.
 - **DNS zone** `lakaniemi.com`, with delete protection. See *DNS* under *Decisions*.
 - Nothing else: no load balancer, volumes, floating IPs, private networks or certificates.
 
@@ -95,7 +95,8 @@ infra/
   deploy/projects.conf       per project: image, Compose service, health URL
   backup/pg-dump.sh          nightly dumps
   systemd/                   deploy and backup timers and services
-  scripts/allow-home-ip.sh   points the firewall's home SSH rule at my current IP (run on my laptop)
+  scripts/set-home-ip.sh     stores my current IP as the home IP and updates the firewall (run from home)
+  scripts/vault-password.sh  reads the Ansible Vault password from 1Password
   .env.example               variables the server's .env must define
 ```
 
@@ -150,7 +151,7 @@ Still to do:
 3. Write the base role and run `site.yaml`, then verify:
    - SSH works from home;
    - port 22 is closed from any other IP (e.g. from a phone hotspot);
-   - `allow-home-ip.sh` updates the rule;
+   - `set-home-ip.sh` updates the rule;
    - the Hetzner web console login works;
    - running the playbook a second time reports no changes.
 4. Add the docker and stack roles with Caddy and Postgres, and check that TLS works on a placeholder hostname.
