@@ -42,16 +42,13 @@ scripts/set-home-ip.sh
 
 It stores the current public IP, updates only the firewall, and asks you to commit the vault file. Running the playbook from another network doesn't change the rule. Open SSH sessions survive the change.
 
-## DNS cutover (one-off)
+## DNS
 
-1. Run `provision.yaml` and note the nameservers it prints.
-2. Check the records on Hetzner's nameservers:
-   ```sh
-   dig +short @hydrogen.ns.hetzner.com life-app-api.lakaniemi.com A
-   dig +short @hydrogen.ns.hetzner.com life-app-api.lakaniemi.com AAAA
-   ```
-3. In Namecheap: Domain List → `lakaniemi.com` → Nameservers → Custom DNS, and enter the nameservers from step 1.
-4. Run `ansible-playbook ansible/provision.yaml --tags dns` again until `delegation_status` is `valid`, and check that `dig +short NS lakaniemi.com` shows Hetzner's nameservers.
+`lakaniemi.com` is served by Hetzner's nameservers; Namecheap only points at them. Records are defined in `ansible/group_vars/all/dns.yaml`. To add a service hostname, add it to `dns_service_hostnames` and run:
+
+```sh
+ansible-playbook ansible/provision.yaml --tags dns
+```
 
 ## Validation
 
