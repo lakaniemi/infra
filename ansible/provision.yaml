@@ -2,28 +2,6 @@
   hosts: localhost
   connection: local
   gather_facts: false
-  vars:
-    public_rules:
-      - description: http
-        direction: in
-        protocol: tcp
-        port: "80"
-        source_ips: [0.0.0.0/0, "::/0"]
-      - description: https
-        direction: in
-        protocol: tcp
-        port: "443"
-        source_ips: [0.0.0.0/0, "::/0"]
-      - description: icmp
-        direction: in
-        protocol: icmp
-        source_ips: [0.0.0.0/0, "::/0"]
-    home_rule:
-      - description: home
-        direction: in
-        protocol: tcp
-        port: "22"
-        source_ips: ["{{ home_ip }}/32"]
   tasks:
     - name: Upload SSH public key
       hetzner.hcloud.ssh_key:
@@ -35,8 +13,8 @@
     - name: Configure firewall
       hetzner.hcloud.firewall:
         name: "{{ firewall_name }}"
-        rules: "{{ public_rules + home_rule }}"
-        labels: "{{ server_labels }}"
+        rules: "{{ firewall_rules }}"
+        labels: "{{ managed_labels }}"
         state: present
       tags: firewall
 
@@ -53,63 +31,62 @@
         backups: false
         delete_protection: true
         rebuild_protection: true
-        labels: "{{ server_labels }}"
+        labels: "{{ managed_labels }}"
         state: present
       tags: server
 
-    - name: Look up server IPs
-      hetzner.hcloud.server_info:
-        name: "{{ server_name }}"
-      register: server_info
+    - name: Manage DNS
       tags: dns
-
-    - name: Create DNS zone
-      hetzner.hcloud.zone:
-        name: "{{ dns_zone }}"
-        mode: primary
-        ttl: "{{ dns_ttl }}"
-        delete_protection: true
-        labels: "{{ server_labels }}"
-        state: present
-      register: zone
-      tags: dns
-
-    - name: Create static DNS records
-      hetzner.hcloud.zone_rrset:
-        zone: "{{ dns_zone }}"
-        name: "{{ item.name }}"
-        type: "{{ item.type }}"
-        ttl: "{{ dns_ttl }}"
-        records: "{{ item.records }}"
-        state: present
-      loop: "{{ dns_static_records }}"
-      loop_control:
-        label: "{{ item.name }} {{ item.type }}"
-      tags: dns
-
-    - name: Point service hostnames at the server
-      hetzner.hcloud.zone_rrset:
-        zone: "{{ dns_zone }}"
-        name: "{{ item.0 }}"
-        type: "{{ item.1 }}"
-        ttl: "{{ dns_ttl }}"
-        records:
-          - value: "{{ server_ipv4 if item.1 == 'A' else server_ipv6 }}"
-        state: present
-      loop: "{{ dns_service_hostnames | product(['A', 'AAAA']) | list }}"
-      loop_control:
-        label: "{{ item.0 }} {{ item.1 }}"
       vars:
-        server_ipv4: "{{ server_info.hcloud_server_info[0].ipv4_address }}"
+        server: "{{ server_info.hcloud_server_info[0] }}"
+        server_ipv4: "{{ server.ipv4_address }}"
         # Hetzner assigns the server a /64 network; the server itself is ::1 in it.
-        server_ipv6: "{{ server_info.hcloud_server_info[0].ipv6 | regex_replace('/64$', '1') }}"
-      tags: dns
+        server_ipv6: "{{ server.ipv6 | regex_replace('/64$', '1') }}"
+      block:
+        - name: Look up server IPs
+          hetzner.hcloud.server_info:
+            name: "{{ server_name }}"
+          register: server_info
 
-    - name: Show IPs and nameservers
-      ansible.builtin.debug:
-        msg:
-          ipv4: "{{ server_info.hcloud_server_info[0].ipv4_address }}"
-          ipv6: "{{ server_info.hcloud_server_info[0].ipv6 }}"
-          nameservers: "{{ zone.hcloud_zone.authoritative_nameservers.assigned }}"
-          delegation_status: "{{ zone.hcloud_zone.authoritative_nameservers.delegation_status }}"
-      tags: dns
+        - name: Create DNS zone
+          hetzner.hcloud.zone:
+            name: "{{ dns_zone }}"
+            mode: primary
+            ttl: "{{ dns_ttl }}"
+            delete_protection: true
+            labels: "{{ managed_labels }}"
+            state: present
+          register: zone
+
+        - name: Create static DNS records
+          hetzner.hcloud.zone_rrset:
+            zone: "{{ dns_zone }}"
+            name: "{{ item.name }}"
+            type: "{{ item.type }}"
+            ttl: "{{ dns_ttl }}"
+            records: "{{ item.records }}"
+            state: present
+          loop: "{{ dns_static_records }}"
+          loop_control:
+            label: "{{ item.name }} {{ item.type }}"
+
+        - name: Point service hostnames at the server
+          hetzner.hcloud.zone_rrset:
+            zone: "{{ dns_zone }}"
+            name: "{{ item.0 }}"
+            type: "{{ item.1 }}"
+            ttl: "{{ dns_ttl }}"
+            records:
+              - value: "{{ server_ipv4 if item.1 == 'A' else server_ipv6 }}"
+            state: present
+          loop: "{{ dns_service_hostnames | product(['A', 'AAAA']) | list }}"
+          loop_control:
+            label: "{{ item.0 }} {{ item.1 }}"
+
+        - name: Show IPs and nameservers
+          ansible.builtin.debug:
+            msg:
+              ipv4: "{{ server_ipv4 }}"
+              ipv6: "{{ server_ipv6 }}"
+              nameservers: "{{ zone.hcloud_zone.authoritative_nameservers.assigned }}"
+              delegation_status: "{{ zone.hcloud_zone.authoritative_nameservers.delegation_status }}"

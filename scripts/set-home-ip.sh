@@ -18,7 +18,7 @@ fi
 
 # Re-encrypting changes the file even when the IP is the same, so skip it then.
 if [[ -f "$file" ]]; then
-  current="$(ansible-vault view "$file" | awk '/^home_ip:/ { print $2 }')"
+  current="$(ansible-vault view "$file" | awk '/^vault_home_ip:/ { print $2 }')"
   if [[ "$current" == "$ip" ]]; then
     echo "Home IP is already $ip"
     exit 0
@@ -28,7 +28,7 @@ else
   echo "Home IP: $ip"
 fi
 
-printf 'home_ip: %s\n' "$ip" | ansible-vault encrypt --output "$file" -
+printf 'vault_home_ip: %s\n' "$ip" | ansible-vault encrypt --output "$file" -
 ansible-playbook ansible/provision.yaml --tags firewall
 
 echo "Commit $file to record the change."
