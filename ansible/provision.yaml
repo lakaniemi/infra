@@ -25,12 +25,6 @@
         protocol: tcp
         port: "22"
         source_ips: ["{{ home_ip }}/32"]
-    work_vpn_rule:
-      - description: work-vpn
-        direction: in
-        protocol: tcp
-        port: "22"
-        source_ips: "{{ work_vpn_ips }}"
   tasks:
     - name: Upload SSH public key
       hetzner.hcloud.ssh_key:
@@ -42,7 +36,7 @@
     - name: Configure firewall
       hetzner.hcloud.firewall:
         name: "{{ firewall_name }}"
-        rules: "{{ public_rules + home_rule + (work_vpn_rule if work_vpn_ips else []) }}"
+        rules: "{{ public_rules + home_rule }}"
         labels: "{{ server_labels }}"
         state: present
       tags: server

@@ -15,15 +15,6 @@ Ansible configuration for the shared Hetzner server that runs my hobby projects'
    ```sh
    export HCLOUD_TOKEN=...
    ```
-3. Optional, until the work VPN's outgoing IPs are confirmed: put them in an encrypted vault file. Keep the vault password in the password manager too.
-   ```sh
-   ansible-vault create ansible/group_vars/all/vault.yaml
-   ```
-   ```yaml
-   vault_work_vpn_ips:
-     - 203.0.113.0/24
-   ```
-   Without this file, the firewall has no `work-vpn` rule. Once it exists, add `--ask-vault-pass` to every `ansible-playbook` command.
 
 ## Provisioning
 
@@ -35,7 +26,7 @@ ansible-playbook ansible/provision.yaml
 
 Running it again applies only what changed, and a run with no changes should report none. Use `--tags server` or `--tags dns` to run one part.
 
-The firewall's `home` SSH rule is set to the public IP of the machine running the playbook. When running it from somewhere else, such as the work VPN, pass `-e home_ip=<home IP>`.
+The firewall's `home` SSH rule is set to the public IP of the machine running the playbook. When running it from somewhere else, pass `-e home_ip=<home IP>`.
 
 ## Updating the home IP
 

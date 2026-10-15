@@ -30,7 +30,7 @@ Configuration for the shared Hetzner server that runs my hobby projects' APIs an
   - The migrate service can later use a role with schema-change (DDL) rights, while the API's role keeps only data access.
 - **Backups:** a nightly `pg_dump` of each database, copied off the server. Hetzner's own server backups aren't used: they copy the whole disk while Postgres is running, so the database copy isn't guaranteed to be consistent.
 - **Deploys are pull-based.** GitHub Actions holds no credentials for the server; the server pulls new images from ghcr.io itself. See *Deploy flow*.
-- **SSH (admin access):** key-only OpenSSH. The Hetzner firewall allows port 22 only from my home IP and my workplace VPN's outgoing IPs. No VPN or other access product is added: the main remaining risk is an OpenSSH flaw exploitable before login, and automatic security updates cover that. See *Server baseline*.
+- **SSH (admin access):** key-only OpenSSH. The Hetzner firewall allows port 22 only from my home IP. Allowing my workplace VPN's outgoing IPs too was considered and left out for now; it would be a second firewall rule, with the IPs kept in Ansible Vault. No VPN or other access product is added: the main remaining risk is an OpenSSH flaw exploitable before login, and automatic security updates cover that. See *Server baseline*.
 
 ## Open decisions
 
@@ -42,7 +42,7 @@ Configuration for the shared Hetzner server that runs my hobby projects' APIs an
 - **Server:** as above, with my SSH key added at creation and both a public IPv4 and IPv6 address. Hetzner's own backups stay off.
 - **Cloud Firewall:**
   - Inbound: allow TCP 80 and 443 from anywhere, plus ICMP.
-  - TCP 22 only from a `home` rule (my current home IP) and a `work-vpn` rule (my workplace VPN's outgoing IPs; confirm with IT that they're stable and that this use is fine).
+  - TCP 22 only from a `home` rule (my current home IP).
   - My home IP isn't guaranteed to stay the same, so `scripts/allow-home-ip.sh` replaces the `home` rule with my current public IP. It uses the `hcloud` CLI and my Hetzner API token on my laptop.
   - Rule changes affect only new connections, so an open SSH session survives them. Hetzner doesn't document how fast changes apply; in practice it's seconds.
   - This firewall filters traffic before it reaches the server. Docker's published ports bypass `ufw` on the server, so this is the firewall that counts.
@@ -52,7 +52,7 @@ Configuration for the shared Hetzner server that runs my hobby projects' APIs an
 
 ## Server baseline (Ansible playbook)
 
-- **Admin user:** a non-root user with `sudo`. It has a strong password that works only on Hetzner's web console, which is the recovery path if neither allowed IP works.
+- **Admin user:** a non-root user with `sudo`. It has a strong password that works only on Hetzner's web console, which is the recovery path if SSH from home stops working.
 - **SSH** (`sshd_config.d/` drop-in):
   - `PasswordAuthentication no`, `KbdInteractiveAuthentication no`, `PermitRootLogin no`
   - `AllowUsers <admin>`, `AllowAgentForwarding no`, `X11Forwarding no`
@@ -148,7 +148,7 @@ Still to do:
 1. Write the `provision.yaml` playbook and create the Hetzner resources.
 2. DNS: `provision.yaml` creates the zone and records. Check them against Hetzner's nameservers with `dig`, then switch the domain's nameservers at Namecheap to Hetzner's.
 3. Write the base role and run `site.yaml`, then verify:
-   - SSH works from home and from the work VPN;
+   - SSH works from home;
    - port 22 is closed from any other IP (e.g. from a phone hotspot);
    - `allow-home-ip.sh` updates the rule;
    - the Hetzner web console login works;

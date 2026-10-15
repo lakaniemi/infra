@@ -10,7 +10,5 @@ ssh_public_key_path: ~/.ssh/id_ed25519.pub
 
 firewall_name: hobby
 # Re-running provision.yaml points the home SSH rule at whatever IP it runs from.
-# Override with -e home_ip=... when running from elsewhere, e.g. the work VPN.
+# Override with -e home_ip=... when running from elsewhere.
 home_ip: "{{ lookup('ansible.builtin.url', 'https://api.ipify.org') | trim }}"
-# Empty until vault.yaml defines it; the work-vpn rule is left out while empty.
-work_vpn_ips: "{{ vault_work_vpn_ips | default([]) }}"
