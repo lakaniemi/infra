@@ -52,7 +52,10 @@ Configuration for the shared Hetzner server that runs my hobby projects' APIs an
 
 ## Server baseline (Ansible playbook)
 
-- **Admin user:** a non-root user with `sudo`. It has a strong password that works only on Hetzner's web console, which is the recovery path if SSH from home stops working.
+- **Admin user:** a non-root user with `sudo`, which asks for the user's password. Root login over SSH is off, so a stolen SSH key alone doesn't give root.
+  - The password is strong and stored only in Ansible Vault (`vault_admin_password`), not in 1Password, so 1Password keeps holding only the keys: the vault password, the Hetzner token and the SSH key.
+  - The base role sets it from the vault, hashed with a fixed salt so re-runs report no changes. Ansible's `ansible_become_password` reads the same vault variable, so runs need no extra input.
+  - SSH password login is off, so outside `sudo` the password works only on Hetzner's web console, the recovery path if SSH from home stops working. To read it there, use `ansible-vault view` on any computer with the repo and 1Password.
 - **SSH** (`sshd_config.d/` drop-in):
   - `PasswordAuthentication no`, `KbdInteractiveAuthentication no`, `PermitRootLogin no`
   - `AllowUsers <admin>`, `AllowAgentForwarding no`, `X11Forwarding no`
@@ -148,7 +151,7 @@ Still to do:
 
 1. Write the `provision.yaml` playbook and create the Hetzner resources.
 2. DNS: `provision.yaml` creates the zone and records. Check them against Hetzner's nameservers with `dig`, then switch the domain's nameservers at Namecheap to Hetzner's.
-3. Write the base role and run `site.yaml`, then verify:
+3. Write the base role and run `site.yaml`. Document Ansible Vault usage in the README: viewing, editing and adding encrypted files, e.g. reading the admin password for the web console. Then verify:
    - SSH works from home;
    - port 22 is closed from any other IP (e.g. from a phone hotspot);
    - `set-home-ip.sh` updates the rule;
