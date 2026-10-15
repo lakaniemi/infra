@@ -9,42 +9,38 @@ Ansible configuration for the shared Hetzner server that runs my hobby projects'
    brew install ansible ansible-lint shellcheck 1password-cli
    ansible-galaxy collection install -r ansible/requirements.yaml
    ```
-   The last command installs the pinned `hetzner.hcloud` version into `.ansible/collections`, which `ansible.cfg` uses instead of the older copy bundled with Homebrew's Ansible. Run it again after `requirements.yaml` changes. The collection bundles the `hcloud` Python library it needs.
-2. Turn on the 1Password app's CLI integration (Settings → Developer → Integrate with 1Password CLI), so `op` unlocks with Touch ID.
-3. Secrets live in 1Password, in the `Private` vault:
-   - `infra-ansible-vault`, field `password`: the Ansible Vault password. `ansible.cfg` reads it through `scripts/vault-password.sh`, so every command that needs it finds it on its own.
+2. Turn on the 1Password app's CLI integration (Settings → Developer → Integrate with 1Password CLI).
+3. Create these items in 1Password, in the `Private` vault:
+   - `infra-ansible-vault`, field `password`: the Ansible Vault password.
    - `hetzner-cloud-api`, field `api-token`: a Hetzner Cloud API token with read and write access.
-   - `hetzner-ssh-key`: an SSH Key item (Ed25519) for logging in to the server. `provision.yaml` uploads its public key to Hetzner.
-4. Turn on the 1Password SSH agent (Settings → Developer → Use the SSH agent) and let 1Password update `~/.ssh/config` when it offers to, or follow its [setup guide](https://developer.1password.com/docs/ssh/get-started/). The private key never leaves 1Password, and each SSH login, including Ansible's, asks for Touch ID.
+   - `hetzner-ssh-key`: an SSH Key item (Ed25519) for logging in to the server.
+4. Turn on the 1Password SSH agent (Settings → Developer → Use the SSH agent) and let 1Password update `~/.ssh/config`, or follow its [setup guide](https://developer.1password.com/docs/ssh/get-started/).
 5. In each shell where you run Ansible, export the token:
    ```sh
    export HCLOUD_TOKEN="$(op read op://Private/hetzner-cloud-api/api-token)"
    ```
-   `scripts/set-home-ip.sh` reads the token from 1Password on its own if it isn't exported.
 
 ## Provisioning
 
-`provision.yaml` creates the SSH key, firewall, server and DNS zone. Store the home IP first (see below), then run:
+Set the home IP first (see below), then run:
 
 ```sh
 ansible-playbook ansible/provision.yaml
 ```
 
-Running it again applies only what changed, and a run with no changes should report none. Use `--tags server`, `--tags firewall` or `--tags dns` to run one part.
+Use `--tags server`, `--tags firewall` or `--tags dns` to run one part.
 
 ## Setting the home IP
 
-The firewall allows SSH only from the home IP, which is stored encrypted in `ansible/group_vars/all/home_ip.vault.yaml`. To set it, or to update it after it changes, run this from home:
+SSH is allowed only from the home IP. To set it, or to update it after it changes, run this from home and commit the vault file it changes:
 
 ```sh
 scripts/set-home-ip.sh
 ```
 
-It stores the current public IP, updates only the firewall, and asks you to commit the vault file. Running the playbook from another network doesn't change the rule. Open SSH sessions survive the change.
-
 ## DNS
 
-`lakaniemi.com` is served by Hetzner's nameservers; Namecheap only points at them. Records are defined in `ansible/group_vars/all/dns.yaml`. To add a service hostname, add it to `dns_service_hostnames` and run:
+Records are defined in `ansible/group_vars/all/dns.yaml`. To add a service hostname, add it to `dns_service_hostnames` and run:
 
 ```sh
 ansible-playbook ansible/provision.yaml --tags dns
