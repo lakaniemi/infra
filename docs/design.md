@@ -57,7 +57,7 @@ Configuration for the shared Hetzner server that runs my hobby projects' APIs an
   - `PasswordAuthentication no`, `KbdInteractiveAuthentication no`, `PermitRootLogin no`
   - `AllowUsers <admin>`, `AllowAgentForwarding no`, `X11Forwarding no`
   - `LogLevel VERBOSE`, to log each login's key fingerprint
-- **Key:** Ed25519 with a passphrase, held in the macOS keychain. A FIDO2 `ed25519-sk` key, e.g. a YubiKey, is optional and stronger.
+- **Key:** Ed25519, stored in 1Password (`hetzner-ssh-key`) and served by the 1Password SSH agent. The private key never sits on disk, every login asks for Touch ID, and the key follows me to any computer signed in to 1Password. A FIDO2 `ed25519-sk` key, e.g. a YubiKey, is optional and stronger.
 - **Updates:** `unattended-upgrades` installs Ubuntu security updates daily.
   - When an update needs a reboot (typically a new kernel), it reboots at 04:00 UTC (`Automatic-Reboot-Time`).
   - Docker (from Docker's apt repo) and the container images (pinned in `stack/`) aren't updated automatically. I update them deliberately through Ansible.

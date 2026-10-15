@@ -15,7 +15,9 @@ Ansible configuration for the shared Hetzner server that runs my hobby projects'
 3. Secrets live in 1Password, in the `Private` vault:
    - `infra-ansible-vault`, field `password`: the Ansible Vault password. `ansible.cfg` reads it through `scripts/vault-password.sh`, so every command that needs it finds it on its own.
    - `hetzner-cloud-api`, field `api-token`: a Hetzner Cloud API token with read and write access.
-4. In each shell where you run Ansible, export the token:
+   - `hetzner-ssh-key`: an SSH Key item (Ed25519) for logging in to the server. `provision.yaml` uploads its public key to Hetzner.
+4. Turn on the 1Password SSH agent (Settings → Developer → Use the SSH agent) and let 1Password update `~/.ssh/config` when it offers to, or follow its [setup guide](https://developer.1password.com/docs/ssh/get-started/). The private key never leaves 1Password, and each SSH login, including Ansible's, asks for Touch ID.
+5. In each shell where you run Ansible, export the token:
    ```sh
    export HCLOUD_TOKEN="$(op read op://Private/hetzner-cloud-api/api-token)"
    ```
@@ -23,7 +25,7 @@ Ansible configuration for the shared Hetzner server that runs my hobby projects'
 
 ## Provisioning
 
-`provision.yaml` creates the SSH key, firewall, server and DNS zone, using `~/.ssh/id_ed25519.pub` by default (override with `-e ssh_public_key_path=...`). Store the home IP first (see below), then run:
+`provision.yaml` creates the SSH key, firewall, server and DNS zone. Store the home IP first (see below), then run:
 
 ```sh
 ansible-playbook ansible/provision.yaml

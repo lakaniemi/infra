@@ -28,7 +28,7 @@
     - name: Upload SSH public key
       hetzner.hcloud.ssh_key:
         name: "{{ ssh_key_name }}"
-        public_key: "{{ lookup('ansible.builtin.file', ssh_public_key_path | expanduser) }}"
+        public_key: "{{ ssh_public_key }}"
         state: present
       tags: server
 

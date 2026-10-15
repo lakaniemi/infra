@@ -5,8 +5,9 @@ server_image: ubuntu-24.04
 server_labels:
   managed-by: ansible-infra
 
-ssh_key_name: laptop
-ssh_public_key_path: ~/.ssh/id_ed25519.pub
+ssh_key_name: hetzner-ssh-key
+# The private key never leaves 1Password; its SSH agent signs logins.
+ssh_public_key: "{{ lookup('ansible.builtin.pipe', 'op read \"op://Private/hetzner-ssh-key/public key\"') }}"
 
 firewall_name: hobby
 # home_ip comes from home_ip.vault.yaml, written by scripts/set-home-ip.sh.
