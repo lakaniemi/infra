@@ -1,0 +1,25 @@
+dns_zone: lakaniemi.com
+dns_ttl: 3600
+
+# Each gets A and AAAA records pointing at the server.
+dns_service_hostnames:
+  - life-app-api
+
+# The domain sends and receives no mail; these stop others from spoofing it.
+dns_static_records:
+  - name: "@"
+    type: MX
+    records:
+      - value: "0 ."
+  - name: "@"
+    type: TXT
+    records:
+      - value: "{{ 'v=spf1 -all' | hetzner.hcloud.txt_record }}"
+  - name: _dmarc
+    type: TXT
+    records:
+      - value: "{{ 'v=DMARC1; p=reject' | hetzner.hcloud.txt_record }}"
+  - name: "@"
+    type: CAA
+    records:
+      - value: '0 issue "letsencrypt.org"'
