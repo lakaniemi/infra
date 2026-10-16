@@ -35,6 +35,41 @@
         state: present
       tags: server
 
+    # Reinstalls the server from server_image, wiping its disk. The never tag
+    # keeps it out of every run except an explicit --tags rebuild.
+    - name: Rebuild server
+      tags: [rebuild, never]
+      block:
+        - name: Confirm the rebuild
+          ansible.builtin.pause:
+            prompt: >-
+              This wipes {{ server_name }}'s disk, including its databases, and
+              installs {{ server_image }}. Type the server name to continue
+          register: rebuild_confirmation
+
+        - name: Check the confirmation
+          ansible.builtin.assert:
+            that: rebuild_confirmation.user_input == server_name
+            fail_msg: Rebuild cancelled.
+            quiet: true
+
+        # Lifts the rebuild protection first, then rebuilds. If it fails, the
+        # next run of "Create server" turns the protection back on.
+        - name: Rebuild the server
+          hetzner.hcloud.server:
+            name: "{{ server_name }}"
+            image: "{{ server_image }}"
+            delete_protection: true
+            rebuild_protection: false
+            state: rebuild
+
+        - name: Protect the server from rebuilds again
+          hetzner.hcloud.server:
+            name: "{{ server_name }}"
+            delete_protection: true
+            rebuild_protection: true
+            state: present
+
     - name: Manage DNS
       tags: dns
       vars:
