@@ -4,3 +4,5 @@
     project_src: "{{ stack_dir }}"
     service: caddy
     command: caddy reload --config /etc/caddy/Caddyfile
+    # Ansible runs it without a terminal.
+    tty: false
