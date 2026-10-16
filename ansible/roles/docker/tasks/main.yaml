@@ -1,0 +1,58 @@
+# The admin user is deliberately not added to the docker group: membership is
+# effectively root without a password, so Docker runs through sudo instead.
+
+# Written before Docker is installed, so the daemon starts with it. Log options
+# apply only to containers created after a change.
+- name: Create /etc/docker
+  ansible.builtin.file:
+    path: /etc/docker
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Configure the Docker daemon
+  ansible.builtin.copy:
+    src: daemon.json
+    dest: /etc/docker/daemon.json
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart docker
+
+- name: Add Docker's apt repository
+  ansible.builtin.deb822_repository:
+    name: docker
+    types: [deb]
+    uris: https://download.docker.com/linux/ubuntu
+    suites: ["{{ ansible_facts.distribution_release }}"]
+    components: [stable]
+    architectures: ["{{ docker_apt_architectures[ansible_facts.architecture] }}"]
+    signed_by: https://download.docker.com/linux/ubuntu/gpg
+  register: docker_apt_repo
+
+- name: Install Docker Engine and the Compose plugin
+  ansible.builtin.apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-compose-plugin
+    state: present
+    # Refreshes right after the repo is added, and daily otherwise, which also
+    # covers a run that failed between the two tasks. A refresh alone isn't
+    # reported as a change.
+    update_cache: true
+    cache_valid_time: "{{ 0 if docker_apt_repo.changed else 86400 }}"
+
+# Brings the restart: unless-stopped containers back after a reboot.
+- name: Start Docker at boot
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop: [containerd, docker]
+
+# A changed daemon.json must apply before the stack role creates containers.
+- name: Apply Docker configuration changes now
+  ansible.builtin.meta: flush_handlers
