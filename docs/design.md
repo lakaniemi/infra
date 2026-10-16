@@ -181,7 +181,7 @@ Still to do:
    - `set-home-ip.sh` updates the rule;
    - the Hetzner web console login works;
    - running the playbook a second time reports no changes.
-4. Add the docker and stack roles with Caddy, Postgres and the life-app API. Then verify:
+4. **Done.** Add the docker and stack roles with Caddy, Postgres and the life-app API. Then verify:
    - `https://life-app-api.lakaniemi.com/health` answers with a Let's Encrypt certificate and reports the deployed version;
    - only ports 80 and 443 answer from outside, not Postgres;
    - the containers come back after a reboot;
