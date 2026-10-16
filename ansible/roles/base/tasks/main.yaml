@@ -73,20 +73,16 @@
     group: root
     mode: "0644"
 
+# Removes the file if any step fails, so the next run starts over instead of
+# skipping a half-made swap file.
 - name: Create the swap file
   ansible.builtin.shell:
     cmd: >-
       fallocate -l {{ base_swap_size }} {{ base_swap_file }}
       && chmod 600 {{ base_swap_file }}
       && mkswap {{ base_swap_file }}
+      || { rm -f {{ base_swap_file }}; exit 1; }
     creates: "{{ base_swap_file }}"
-
-- name: Restrict the swap file to root
-  ansible.builtin.file:
-    path: "{{ base_swap_file }}"
-    owner: root
-    group: root
-    mode: "0600"
 
 - name: Enable the swap file at boot
   ansible.builtin.lineinfile:

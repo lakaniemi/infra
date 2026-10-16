@@ -36,9 +36,10 @@ Use `--tags server`, `--tags firewall` or `--tags dns` to run one part.
 
 ## Configuring the server
 
-The first run on a new server connects as root:
+The first run on a new server connects as root. Accept the server's host key first, using the IP from `ansible-inventory --host hobby`:
 
 ```sh
+ssh root@<ip> true
 ansible-playbook ansible/site.yaml -e ansible_user=root
 ```
 
