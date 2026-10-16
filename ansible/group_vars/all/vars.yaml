@@ -16,6 +16,12 @@ admin_user: valtteri
 admin_password: "{{ vault_admin_password }}"
 admin_password_salt: "{{ vault_admin_password_salt }}"
 
+postgres_password: "{{ vault_postgres_password }}"
+
+life_app_db_password: "{{ vault_life_app_db_password }}"
+# The Google OAuth Web client IDs whose sign-ins the API accepts, comma-separated.
+life_app_google_client_ids: "{{ vault_life_app_google_client_ids }}"
+
 firewall_name: hobby
 firewall_rules:
   - description: http
