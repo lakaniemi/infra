@@ -99,6 +99,7 @@
     cmd: swapon --show=NAME --noheadings
   register: base_active_swap
   changed_when: false
+  check_mode: false
 
 - name: Turn on the swap file
   ansible.builtin.command:
