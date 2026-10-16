@@ -8,7 +8,7 @@ cd "$(dirname "$0")/.."
 file=ansible/group_vars/all/admin_password.vault.yaml
 
 if [[ -f "$file" ]]; then
-  echo "$file already exists. Delete it first to rotate the password." >&2
+  echo "$file already exists." >&2
   exit 1
 fi
 
