@@ -53,6 +53,25 @@ ansible-playbook ansible/site.yaml --check --diff
 
 Use `--tags base`, `--tags docker` or `--tags stack` to run one role.
 
+## Rebuilding the server
+
+This reinstalls the server from `server_image` in `ansible/group_vars/all/vars.yaml`, e.g. for a new Ubuntu release. It wipes the disk, databases included; the IPs stay the same.
+
+1. Rebuild it, and type the server name when asked:
+   ```sh
+   ansible-playbook ansible/provision.yaml --tags rebuild
+   ```
+2. Replace the old host key, using the IP from `ansible-inventory --host hobby`:
+   ```sh
+   ssh-keygen -R <ip>
+   ssh root@<ip> true
+   ```
+3. Configure it as a new server, connecting as root:
+   ```sh
+   ansible-playbook ansible/site.yaml -e ansible_user=root --check --diff
+   ansible-playbook ansible/site.yaml -e ansible_user=root
+   ```
+
 ## The Compose stack
 
 `stack/` is copied to `/opt/stack` on the server. Docker needs `sudo` there:
