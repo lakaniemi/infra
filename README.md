@@ -19,6 +19,10 @@ Ansible configuration for the shared Hetzner server that runs my hobby projects'
    ```sh
    export HCLOUD_TOKEN="$(op read op://Private/hetzner-cloud-api/api-token)"
    ```
+6. On a fresh repo only (no `ansible/group_vars/all/admin_password.vault.yaml` yet), generate the admin password and commit the file it creates:
+   ```sh
+   scripts/new-admin-password.sh
+   ```
 
 ## Provisioning
 
@@ -29,6 +33,38 @@ ansible-playbook ansible/provision.yaml
 ```
 
 Use `--tags server`, `--tags firewall` or `--tags dns` to run one part.
+
+## Configuring the server
+
+The first run on a new server connects as root:
+
+```sh
+ansible-playbook ansible/site.yaml -e ansible_user=root
+```
+
+After that, root login is off. Run it without the override:
+
+```sh
+ansible-playbook ansible/site.yaml
+```
+
+## Ansible Vault
+
+Ansible reads the vault password from 1Password, so these commands need no password file.
+
+- View an encrypted file, e.g. the admin password for Hetzner's web console:
+  ```sh
+  ansible-vault view ansible/group_vars/all/admin_password.vault.yaml
+  ```
+- Edit one in `$EDITOR`:
+  ```sh
+  ansible-vault edit ansible/group_vars/all/<name>.vault.yaml
+  ```
+- Add one, then reference each variable in `ansible/group_vars/all/vars.yaml` under a plain name (`foo: "{{ vault_foo }}"`):
+  ```sh
+  ansible-vault create ansible/group_vars/all/<name>.vault.yaml
+  ```
+  Prefix the variables in it with `vault_`.
 
 ## Setting the home IP
 
@@ -51,5 +87,6 @@ ansible-playbook ansible/provision.yaml --tags dns
 ```sh
 ansible-lint
 ansible-playbook --syntax-check ansible/provision.yaml
+ansible-playbook --syntax-check ansible/site.yaml
 shellcheck scripts/*.sh
 ```
