@@ -52,11 +52,14 @@ Configuration for the shared Hetzner server that runs my hobby projects' APIs an
 
 ## Server baseline (Ansible playbook)
 
-- **Admin user:** a non-root user with `sudo`, which asks for the user's password. Root login over SSH is off, so a stolen SSH key alone doesn't give root.
-  - The password is strong and stored only in Ansible Vault (`vault_admin_password`), not in 1Password, so 1Password keeps holding only the keys: the vault password, the Hetzner token and the SSH key.
-  - The base role sets it from the vault, hashed with a fixed salt so re-runs report no changes. Ansible's `ansible_become_password` reads the same vault variable, so runs need no extra input.
+- **Admin user:** `valtteri`, a non-root user with `sudo`, which asks for the user's password. Root login over SSH is off, so a stolen SSH key alone doesn't give root.
+  - The password is stored only in Ansible Vault (`vault_admin_password`), not in 1Password, so 1Password keeps holding only the keys: the vault password, the Hetzner token and the SSH key.
+  - It's 32 characters of letters and digits, without look-alikes (0/O, 1/l/I). It may have to be typed into the web console, where keyboard layouts and symbols are unreliable. That still leaves about 185 bits.
+  - `scripts/new-admin-password.sh` generates it straight into the vault file, so it's never printed or pasted anywhere.
+  - The base role sets it from the vault, hashed with a fixed salt (`vault_admin_password_salt`, generated with the password) so re-runs report no changes. Ansible's `ansible_become_password` reads the same vault variable, so runs need no extra input.
+  - **Bootstrap:** Hetzner puts the SSH key only in root's `authorized_keys`, so the first run connects as root with `-e ansible_user=root`. Every later run uses the default, the admin user. A separate bootstrap playbook, or a fallback that detects whether to connect as root, was more code for a one-time run. The sshd reload is a handler, so it runs at the end of the play and the open root connection isn't needed after it.
   - SSH password login is off, so outside `sudo` the password works only on Hetzner's web console, the recovery path if SSH from home stops working. To read it there, use `ansible-vault view` on any computer with the repo and 1Password.
-- **SSH** (`sshd_config.d/` drop-in):
+- **SSH** (`sshd_config.d/10-hardening.conf` drop-in): sshd uses the first value it reads for each setting, so the drop-in sorts before cloud-init's `50-cloud-init.conf`. The role validates it with `sshd -t` before reloading sshd.
   - `PasswordAuthentication no`, `KbdInteractiveAuthentication no`, `PermitRootLogin no`
   - `AllowUsers <admin>`, `AllowAgentForwarding no`, `X11Forwarding no`
   - `LogLevel VERBOSE`, to log each login's key fingerprint
@@ -74,7 +77,8 @@ Configuration for the shared Hetzner server that runs my hobby projects' APIs an
   - default log rotation (`json-file` with `max-size`/`max-file`), so container logs can't fill the 40 GB disk;
   - the admin user isn't in the `docker` group, so Docker runs through `sudo` (`docker` group membership is effectively root);
   - `restart: unless-stopped` on every service.
-- **Other:** a 1 GB swap file as a safety margin, and the timezone set to UTC.
+- **Other:** a 1 GB swap file as a safety margin, and the timezone set to UTC, which also makes the 04:00 reboot time UTC.
+  - The base role uses only `ansible.builtin` modules, so the timezone is set through `/etc/localtime` and the SSH key is written with `copy`. `community.general` and `ansible.posix` would be pinned dependencies for a single module each.
 
 ## Repo layout
 
