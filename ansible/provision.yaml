@@ -53,13 +53,14 @@
             fail_msg: Rebuild cancelled.
             quiet: true
 
-        # Lifts the rebuild protection first, then rebuilds. If it fails, the
-        # next run of "Create server" turns the protection back on.
+        # Lifts the protection first, then rebuilds. Hetzner requires delete and
+        # rebuild protection to match, so both are off until the next task. If
+        # this fails, the next run of "Create server" turns them back on.
         - name: Rebuild the server
           hetzner.hcloud.server:
             name: "{{ server_name }}"
             image: "{{ server_image }}"
-            delete_protection: true
+            delete_protection: false
             rebuild_protection: false
             state: rebuild
 

@@ -53,7 +53,7 @@ Configuration for the shared Hetzner server that runs my hobby projects' APIs an
 - **DNS zone** `lakaniemi.com`, with delete protection. See *DNS* under *Decisions*.
 - **Changing the server's OS:** `server_image` applies only when the server is created. `hetzner.hcloud.server` with `state: present` ignores image changes, so a new Ubuntu release is installed by a **rebuild** (`provision.yaml --tags rebuild`).
   - A rebuild keeps the server, its IPs and its firewall, so DNS and the home rule don't change. Hetzner puts the creation SSH key back for root, so `site.yaml` bootstraps it like a new server. It wipes the disk, including Postgres and Caddy's certificates, and gives the server a new SSH host key.
-  - The rebuild tasks carry Ansible's special `never` tag, so they run only when `--tags rebuild` is given, never in a normal run. They ask for the server name first, lift the rebuild protection only for the rebuild, and turn it back on afterwards.
+  - The rebuild tasks carry Ansible's special `never` tag, so they run only when `--tags rebuild` is given, never in a normal run. They ask for the server name first, lift the protection only for the rebuild, and turn it back on afterwards. Hetzner requires delete and rebuild protection to have the same value, so delete protection is off for those few minutes too.
   - Once there's real data, take and copy off a `pg_dump` first (see *Backups*).
   - Creating a second server and moving DNS to it would avoid the downtime, but means new IPs and more steps. It's worth it once there are real users.
 - Nothing else: no load balancer, volumes, floating IPs, private networks or certificates.
