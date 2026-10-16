@@ -4,7 +4,8 @@ Configuration for the shared Hetzner server that runs my hobby projects' APIs an
 
 ## Decisions
 
-- **Server:** Hetzner Cloud **CPX12** (1 vCPU, 2 GB RAM, 40 GB NVMe) in **HEL1** (Helsinki). €11.99/month before VAT (€15.05 with Finnish VAT), plus €0.50/month before VAT for the IPv4 address. Ubuntu 24.04 LTS. Upgrade the server type when projects need more.
+- **Server:** Hetzner Cloud **CPX12** (1 vCPU, 2 GB RAM, 40 GB NVMe) in **HEL1** (Helsinki). €11.99/month before VAT (€15.05 with Finnish VAT), plus €0.50/month before VAT for the IPv4 address. Upgrade the server type when projects need more.
+  - **Ubuntu 26.04 LTS.** A new LTS is adopted once its first point release (e.g. 26.04.1) is out, as Ubuntu itself does before offering upgrades to it. The server started on 24.04 and was rebuilt on 26.04 while it held only test data.
 - **IPv4 and IPv6 are both enabled.**
   - IPv4-only client networks couldn't reach the server without IPv4.
   - `github.com` and `ghcr.io` have no IPv6 addresses, so the server couldn't pull images without IPv4.
@@ -50,6 +51,11 @@ Configuration for the shared Hetzner server that runs my hobby projects' APIs an
   - This firewall filters traffic before it reaches the server. Docker's published ports bypass `ufw` on the server, so this is the firewall that counts.
 - **The Hetzner API token and the Ansible Vault password** live in 1Password, so any computer signed in to it can run the playbooks. `ansible.cfg` gets the vault password through `scripts/vault-password.sh` (`op read`), and the token is exported as `HCLOUD_TOKEN`. Neither is ever in the repo.
 - **DNS zone** `lakaniemi.com`, with delete protection. See *DNS* under *Decisions*.
+- **Changing the server's OS:** `server_image` applies only when the server is created. `hetzner.hcloud.server` with `state: present` ignores image changes, so a new Ubuntu release is installed by a **rebuild** (`provision.yaml --tags rebuild`).
+  - A rebuild keeps the server, its IPs and its firewall, so DNS and the home rule don't change. Hetzner puts the creation SSH key back for root, so `site.yaml` bootstraps it like a new server. It wipes the disk, including Postgres and Caddy's certificates, and gives the server a new SSH host key.
+  - The rebuild tasks carry Ansible's special `never` tag, so they run only when `--tags rebuild` is given, never in a normal run. They ask for the server name first, lift the protection only for the rebuild, and turn it back on afterwards. Hetzner requires delete and rebuild protection to have the same value, so delete protection is off for those few minutes too.
+  - Once there's real data, take and copy off a `pg_dump` first (see *Backups*).
+  - Creating a second server and moving DNS to it would avoid the downtime, but means new IPs and more steps. It's worth it once there are real users.
 - Nothing else: no load balancer, volumes, floating IPs, private networks or certificates.
 
 ## Server baseline (Ansible playbook)
@@ -59,6 +65,7 @@ Configuration for the shared Hetzner server that runs my hobby projects' APIs an
   - It's 32 characters of letters and digits, without look-alikes (0/O, 1/l/I). It may have to be typed into the web console, where keyboard layouts and symbols are unreliable. That still leaves about 185 bits.
   - It was generated once, straight into the vault file (`admin_password.vault.yaml`), so it was never printed or pasted anywhere.
   - The base role sets it from the vault, hashed with a fixed salt (`vault_admin_password_salt`, generated with the password) so re-runs report no changes. Ansible's `ansible_become_password` reads the same vault variable, so runs need no extra input.
+  - Ubuntu 26.04's `sudo` is `sudo-rs`, which shows Ansible's password prompt in a different form, so Ansible times out waiting for it. Ansible runs the original sudo instead (`ansible_become_exe: /usr/bin/sudo.ws`, installed alongside), and the server keeps Ubuntu's default for interactive use. Making the original sudo the system default with `update-alternatives` was the alternative; it changes more for the same result.
   - **Bootstrap:** Hetzner puts the SSH key only in root's `authorized_keys`, so the first run connects as root with `-e ansible_user=root`. Every later run uses the default, the admin user. A separate bootstrap playbook, or a fallback that detects whether to connect as root, was more code for a one-time run. The sshd reload is a handler, so it runs at the end of the play and the open root connection isn't needed after it.
   - SSH password login is off, so outside `sudo` the password works only on Hetzner's web console, the recovery path if SSH from home stops working. To read it there, use `ansible-vault view` on any computer with the repo and 1Password.
 - **SSH** (`sshd_config.d/10-hardening.conf` drop-in): sshd uses the first value it reads for each setting, so the drop-in sorts before cloud-init's `50-cloud-init.conf`. The role validates it with `sshd -t` before reloading sshd.
@@ -181,7 +188,7 @@ Still to do:
    - `set-home-ip.sh` updates the rule;
    - the Hetzner web console login works;
    - running the playbook a second time reports no changes.
-4. Add the docker and stack roles with Caddy, Postgres and the life-app API. Then verify:
+4. **Done.** Add the docker and stack roles with Caddy, Postgres and the life-app API. Then verify:
    - `https://life-app-api.lakaniemi.com/health` answers with a Let's Encrypt certificate and reports the deployed version;
    - only ports 80 and 443 answer from outside, not Postgres;
    - the containers come back after a reboot;

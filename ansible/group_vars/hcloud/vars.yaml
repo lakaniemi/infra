@@ -1,4 +1,7 @@
 # The first run connects as root instead, with -e ansible_user=root (see README).
 ansible_user: "{{ admin_user }}"
 ansible_become_password: "{{ admin_password }}"
+# Ubuntu's default sudo-rs rewrites Ansible's password prompt, so Ansible would
+# time out waiting for it. The original sudo is installed alongside it.
+ansible_become_exe: /usr/bin/sudo.ws
 ansible_python_interpreter: /usr/bin/python3
