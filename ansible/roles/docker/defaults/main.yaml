@@ -1,0 +1,4 @@
+# Ansible's architecture fact to the name Docker's apt repo uses.
+docker_apt_architectures:
+  x86_64: amd64
+  aarch64: arm64

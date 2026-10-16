@@ -1,0 +1,23 @@
+services:
+  # No restart policy: it runs once per `up` and isn't started again at boot.
+  life-app-migrate:
+    image: ghcr.io/lakaniemi/life-app-api:bcb5cb70fde521e863b2f9cf83fb0599ed0b6441@sha256:9d57dfdaae64493868d10af01fe9766f4e19799edcbd387943b58fd6965d1db1
+    entrypoint: ["/migrate"]
+    command: ["up"]
+    environment:
+      DATABASE_URL: ${LIFE_APP_DATABASE_URL:?}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [db]
+
+  life-app-api:
+    image: ghcr.io/lakaniemi/life-app-api:bcb5cb70fde521e863b2f9cf83fb0599ed0b6441@sha256:9d57dfdaae64493868d10af01fe9766f4e19799edcbd387943b58fd6965d1db1
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${LIFE_APP_DATABASE_URL:?}
+      GOOGLE_CLIENT_IDS: ${LIFE_APP_GOOGLE_CLIENT_IDS:?}
+    depends_on:
+      life-app-migrate:
+        condition: service_completed_successfully
+    networks: [web, db]

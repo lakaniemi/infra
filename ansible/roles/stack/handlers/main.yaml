@@ -1,0 +1,8 @@
+# Graceful: open connections stay up, and an unchanged Caddyfile is a no-op.
+- name: Reload Caddy
+  community.docker.docker_compose_v2_exec:
+    project_src: "{{ stack_dir }}"
+    service: caddy
+    command: caddy reload --config /etc/caddy/Caddyfile
+    # Ansible runs it without a terminal.
+    tty: false

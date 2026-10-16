@@ -1,0 +1,50 @@
+- name: Check that the stack's secrets are set
+  ansible.builtin.assert:
+    that:
+      - vault_postgres_password | default('') | length > 0
+      - vault_life_app_db_password | default('') | length > 0
+      - vault_life_app_google_client_ids | default('') | length > 0
+    fail_msg: >-
+      A stack secret is missing. Add it with ansible-vault edit; see
+      "Adding a project's settings" in the README.
+    quiet: true
+
+# Copies the files as tracked in Git, keeping the init scripts executable.
+# Files deleted from stack/ stay on the server until removed by hand.
+- name: Copy the Compose stack
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../stack/"
+    dest: "{{ stack_dir }}/"
+    owner: root
+    group: root
+    mode: preserve
+    directory_mode: "0755"
+  notify: Reload Caddy
+
+- name: Write the stack's secrets
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ stack_dir }}/.env"
+    owner: root
+    group: root
+    mode: "0600"
+  # --diff would print the secrets.
+  diff: false
+
+# `up` also starts each project's exited migrate container again, which only
+# finds no pending migrations, so that alone isn't reported as a change.
+# Creating or recreating one, e.g. for a new image, still is.
+- name: Start the stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ stack_dir }}"
+    state: present
+    remove_orphans: true
+  register: stack_compose
+  changed_when: >-
+    stack_compose.actions
+    | rejectattr('status', 'eq', 'Starting')
+    | list | length > 0
+    or stack_compose.actions
+    | selectattr('status', 'eq', 'Starting')
+    | rejectattr('id', 'match', '.*-migrate-1$')
+    | list | length > 0

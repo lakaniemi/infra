@@ -1,0 +1,53 @@
+name: hobby
+
+services:
+  caddy:
+    image: caddy:2.11.7@sha256:685ae3d7c34d9b5f8caeddc5d14051db7bbd88ff1f5a2fa0c16bd8ca328fb7af
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # The directory, not the file: Ansible replaces the Caddyfile by renaming
+      # a new file over it, and a single-file mount would keep the old one.
+      - ./caddy:/etc/caddy:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [web]
+
+  postgres:
+    image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+    restart: unless-stopped
+    stop_grace_period: 60s
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      # Read by postgres/init/, which creates each project's role.
+      LIFE_APP_DB_PASSWORD: ${LIFE_APP_DB_PASSWORD:?}
+    volumes:
+      # PG18 images keep data in a version-specific subdirectory of this path.
+      - pgdata:/var/lib/postgresql
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # Over TCP: while the init scripts run, Postgres listens only on its
+      # Unix socket, and isn't ready for the other containers yet.
+      test: ["CMD", "pg_isready", "-U", "postgres", "-h", "127.0.0.1"]
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      start_interval: 1s
+    networks: [db]
+
+# Each project is listed: include takes no wildcards.
+include:
+  - projects/life-app.yaml
+
+networks:
+  web:
+  db:
+    # Postgres needs no internet access.
+    internal: true
+
+volumes:
+  caddy_data:
+  caddy_config:
+  pgdata:

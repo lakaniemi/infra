@@ -4,4 +4,6 @@
   # Otherwise a failed task skips the sshd reload, and later runs never notify it again.
   force_handlers: true
   roles:
-    - base
+    - { role: base, tags: base }
+    - { role: docker, tags: docker }
+    - { role: stack, tags: stack }
