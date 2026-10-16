@@ -1,0 +1,107 @@
+# Set first, so the reboot time below is in UTC.
+- name: Set the timezone to UTC
+  ansible.builtin.file:
+    src: /usr/share/zoneinfo/Etc/UTC
+    dest: /etc/localtime
+    state: link
+    force: true
+
+- name: Record the timezone in /etc/timezone
+  ansible.builtin.copy:
+    content: "Etc/UTC\n"
+    dest: /etc/timezone
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Create the admin user
+  ansible.builtin.user:
+    name: "{{ admin_user }}"
+    groups: [sudo]
+    append: true
+    shell: /bin/bash
+    # A fixed salt keeps the hash the same, so re-runs report no change.
+    password: "{{ admin_password | password_hash('sha512', admin_password_salt) }}"
+  no_log: true
+
+- name: Create the admin user's .ssh directory
+  ansible.builtin.file:
+    path: "/home/{{ admin_user }}/.ssh"
+    state: directory
+    owner: "{{ admin_user }}"
+    group: "{{ admin_user }}"
+    mode: "0700"
+
+- name: Authorize the SSH key for the admin user
+  ansible.builtin.copy:
+    content: "{{ ssh_public_key }}\n"
+    dest: "/home/{{ admin_user }}/.ssh/authorized_keys"
+    owner: "{{ admin_user }}"
+    group: "{{ admin_user }}"
+    mode: "0600"
+
+# sshd uses the first value it reads for each setting, so this must sort before
+# cloud-init's 50-cloud-init.conf.
+- name: Harden SSH
+  ansible.builtin.template:
+    src: sshd-hardening.conf.j2
+    dest: /etc/ssh/sshd_config.d/10-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+    validate: /usr/sbin/sshd -t -f %s
+  notify: Reload sshd
+
+- name: Install unattended-upgrades
+  ansible.builtin.apt:
+    name: unattended-upgrades
+    state: present
+
+- name: Enable daily unattended upgrades
+  ansible.builtin.copy:
+    src: 20auto-upgrades
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Reboot automatically when an update needs it
+  ansible.builtin.copy:
+    src: 52unattended-upgrades-local
+    dest: /etc/apt/apt.conf.d/52unattended-upgrades-local
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Create the swap file
+  ansible.builtin.shell:
+    cmd: >-
+      fallocate -l {{ base_swap_size }} {{ base_swap_file }}
+      && chmod 600 {{ base_swap_file }}
+      && mkswap {{ base_swap_file }}
+    creates: "{{ base_swap_file }}"
+
+- name: Restrict the swap file to root
+  ansible.builtin.file:
+    path: "{{ base_swap_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Enable the swap file at boot
+  ansible.builtin.lineinfile:
+    path: /etc/fstab
+    line: "{{ base_swap_file }} none swap sw 0 0"
+    regexp: "^{{ base_swap_file }}\\s"
+
+- name: List active swap
+  ansible.builtin.command:
+    cmd: swapon --show=NAME --noheadings
+  register: base_active_swap
+  changed_when: false
+
+- name: Turn on the swap file
+  ansible.builtin.command:
+    cmd: swapon {{ base_swap_file }}
+  when: base_swap_file not in base_active_swap.stdout_lines
+  changed_when: true
