@@ -153,9 +153,9 @@ Still to do:
 
 ## Build order
 
-1. Write the `provision.yaml` playbook and create the Hetzner resources.
-2. DNS: `provision.yaml` creates the zone and records. Check them against Hetzner's nameservers with `dig`, then switch the domain's nameservers at Namecheap to Hetzner's.
-3. Write the base role and run `site.yaml`. Document Ansible Vault usage in the README: viewing, editing and adding encrypted files, e.g. reading the admin password for the web console. Then verify:
+1. **Done.** Write the `provision.yaml` playbook and create the Hetzner resources.
+2. **Done.** DNS: `provision.yaml` creates the zone and records. Check them against Hetzner's nameservers with `dig`, then switch the domain's nameservers at Namecheap to Hetzner's.
+3. **Done.** Write the base role and run `site.yaml`. Document Ansible Vault usage in the README: viewing, editing and adding encrypted files, e.g. reading the admin password for the web console. Then verify:
    - SSH works from home;
    - port 22 is closed from any other IP (e.g. from a phone hotspot);
    - `set-home-ip.sh` updates the rule;
