@@ -1,0 +1,4 @@
+# The first run connects as root instead, with -e ansible_user=root (see README).
+ansible_user: "{{ admin_user }}"
+ansible_become_password: "{{ admin_password }}"
+ansible_python_interpreter: /usr/bin/python3

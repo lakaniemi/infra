@@ -12,6 +12,10 @@ ssh_public_key: "{{ lookup('ansible.builtin.pipe', 'op read \"op://Private/hetzn
 # Written by scripts/set-home-ip.sh.
 home_ip: "{{ vault_home_ip }}"
 
+admin_user: valtteri
+admin_password: "{{ vault_admin_password }}"
+admin_password_salt: "{{ vault_admin_password_salt }}"
+
 firewall_name: hobby
 firewall_rules:
   - description: http

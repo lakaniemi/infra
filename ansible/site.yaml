@@ -1,0 +1,7 @@
+- name: Configure the server
+  hosts: hcloud
+  become: true
+  # Otherwise a failed task skips the sshd reload, and later runs never notify it again.
+  force_handlers: true
+  roles:
+    - base
