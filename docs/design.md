@@ -18,6 +18,8 @@ Configuration for the shared Hetzner server that runs my hobby projects' APIs an
   - Playbooks configure everything inside the server.
   - Running `ansible-playbook` again after any change applies only what differs, so the repo stays the source of truth and the server doesn't drift.
   - Ansible runs from my laptop over SSH, with nothing installed on the server.
+  - `group_vars` sit next to the playbooks in `ansible/`, so only playbooks would load them. `ansible.cfg` sets `playbook_dir = ansible`, so ad-hoc commands (`ansible hobby -m …`) load them too.
+  - Collections are pinned in `ansible/requirements.yaml` (`hetzner.hcloud`, `community.docker`) and installed into `.ansible/collections`. The install uses `--force`, because Homebrew's Ansible bundles its own copies, and `ansible-galaxy` would otherwise skip one that already satisfies the pin.
 - **Runtime:** Docker Compose. No Kubernetes, since a single 2 GB server gets nothing from a cluster scheduler.
 - **Reverse proxy:** Caddy, with automatic Let's Encrypt TLS and one certificate per hostname.
   - Caddy is the only container with published ports (80 and 443).
@@ -95,7 +97,7 @@ infra/
     roles/                   base (users, SSH, updates, swap), docker, stack, deploy, backup
   stack/                     copied to the server by the stack role
     compose.yaml             caddy, postgres, and include: of projects/*.yaml
-    projects/life-app.yaml   life-migrate and life-api services
+    projects/life-app.yaml   life-app-migrate and life-app-api services
     caddy/Caddyfile          one block per hostname
     postgres/init/           creates per-project databases and roles on first start
   deploy/deploy.sh           pull-based deploy (below)
@@ -108,9 +110,26 @@ infra/
 ```
 
 - **Secrets:** the server's `.env` (root-owned, mode 600) holds Postgres passwords and each API's settings, such as `DATABASE_URL` and Google client IDs. Ansible writes it from Ansible Vault, so the encrypted secrets can live in the repo.
+  - Variables are prefixed per project (`LIFE_APP_…`), and each service picks its own through `${…:?}` interpolation. Postgres never sees an API's settings, and a missing variable stops `up` with an error naming it.
+  - Included project files use the main `compose.yaml`'s `.env` too, so one file serves the whole stack.
+  - The passwords were generated straight into the vault files (`openssl rand -hex 32` piped into `ansible-vault encrypt`), so they were never printed. Hex needs no escaping in `DATABASE_URL`.
+  - Google client IDs aren't secret, since they ship inside the app, but they're in Ansible Vault with the project's other settings.
 - **Postgres init:** scripts in `postgres/init/` run only on an empty data volume. For a project added later, a playbook task creates its database and role.
+  - Each project's role owns its database, so its migrations can create tables in `public`.
+  - The scripts are executable, so they run as their own process with `set -euo pipefail`. A non-executable one would be sourced into the image's entrypoint instead, and Docker Desktop fails to run it at all, so a local test wouldn't match the server.
+  - If an init script fails, Postgres restarts and skips initialisation, because the data directory now exists. On a new server, remove the `hobby_pgdata` volume and run the playbook again.
+  - Changing a password in the vault later doesn't change it in Postgres: init doesn't run again. Rotating one needs an `ALTER ROLE` as well.
+  - The healthcheck uses `pg_isready -h 127.0.0.1`. While the init scripts run, Postgres listens only on its Unix socket, so a socket check would report it ready too early.
 - **Networks:** `web` connects Caddy and the APIs. `db` connects Postgres and the APIs. Postgres isn't on `web`.
+  - `db` is `internal: true`, so Postgres has no route to the internet. The APIs reach the internet (e.g. Google's signing keys) through `web`.
 - **Caddy:** `reverse_proxy` with `lb_try_duration` set. Caddy then holds requests for the second or two an API restarts, instead of returning errors.
+  - The `caddy/` directory is mounted, not the Caddyfile alone. Ansible replaces files by renaming a new one over them, and a single-file bind mount would keep showing the old file.
+  - HTTP/3 is off (`protocols h1 h2`): it runs over UDP, which the Hetzner firewall doesn't allow.
+- **Images are pinned as `tag@digest`** (e.g. `caddy:2.11.7@sha256:…`). Docker pulls by the digest, so a moved tag can't change what runs; the tag shows which version it is. Until the deploy role exists (build step 6), the life-app image is updated by hand the same way. Step 6 moves the life-app pin somewhere deploy.sh owns, so that `site.yaml` doesn't roll back what it deployed.
+- **The stack role** copies `stack/` to `/opt/stack` and runs `docker compose up` through `community.docker.docker_compose_v2`. The module supports `--check` (through compose's `--dry-run`) and reports which containers changed; a `command` task would do neither.
+  - `copy` sends every file in `stack/`, tracked or not, and doesn't delete files removed from it; remove those on the server by hand.
+  - `up` starts each project's exited migrate container again, every run. That's harmless (no pending migrations, under the migration lock), so the role doesn't count it as a change. Creating or recreating a migrate container, e.g. for a new image, still counts.
+  - A change in `stack/` triggers a graceful `caddy reload`.
 
 ## Deploy flow
 
@@ -146,10 +165,11 @@ Done in [life-app#19](https://github.com/lakaniemi/life-app/pull/19):
 - The CI `publish` job, which pushes `:<sha>` and `:production`.
 - The hosting decision in `CLAUDE.md`.
 
+Also done: the `life-app-api` ghcr.io package is public, so the server pulls it without credentials.
+
 Still to do:
 - **Health poll in CI:** after publishing, poll `https://life-app-api.lakaniemi.com/health` until it reports the new SHA. This comes once the server and DNS exist.
 - **App config:** point the production API URL at `https://life-app-api.lakaniemi.com`.
-- **Package visibility:** make the `life-api` ghcr.io package public after its first publish.
 
 ## Build order
 
@@ -161,7 +181,11 @@ Still to do:
    - `set-home-ip.sh` updates the rule;
    - the Hetzner web console login works;
    - running the playbook a second time reports no changes.
-4. Add the docker and stack roles with Caddy and Postgres, and check that TLS works on a placeholder hostname.
+4. Add the docker and stack roles with Caddy, Postgres and the life-app API. Then verify:
+   - `https://life-app-api.lakaniemi.com/health` answers with a Let's Encrypt certificate and reports the deployed version;
+   - only ports 80 and 443 answer from outside, not Postgres;
+   - the containers come back after a reboot;
+   - running the playbook a second time reports no changes.
 5. life-app: add the health poll to CI and set the app's production API URL.
 6. Add the deploy role. Do the first deploy end to end, then test a rollback by moving `:production` back.
 7. Backups: add the backup role once the backup location is decided, and do a test restore.

@@ -7,7 +7,7 @@ Ansible configuration for the shared Hetzner server that runs my hobby projects'
 1. Install the tools:
    ```sh
    brew install ansible ansible-lint shellcheck 1password-cli
-   ansible-galaxy collection install -r ansible/requirements.yaml
+   ansible-galaxy collection install --force -r ansible/requirements.yaml
    ```
 2. Turn on the 1Password app's CLI integration (Settings → Developer → Integrate with 1Password CLI).
 3. Create these items in 1Password, in the `Private` vault:
@@ -44,6 +44,50 @@ After that, root login is off. Run it without the override:
 ```sh
 ansible-playbook ansible/site.yaml
 ```
+
+Do a dry run first. It shows what would change without changing anything:
+
+```sh
+ansible-playbook ansible/site.yaml --check --diff
+```
+
+Use `--tags base`, `--tags docker` or `--tags stack` to run one role.
+
+## The Compose stack
+
+`stack/` is copied to `/opt/stack` on the server. Docker needs `sudo` there:
+
+```sh
+sudo docker compose -f /opt/stack/compose.yaml ps
+sudo docker compose -f /opt/stack/compose.yaml logs -f life-app-api
+```
+
+### Adding a project's settings
+
+The stack role stops if a setting is missing. To add or change one, e.g. life-app's Google client IDs:
+
+```sh
+ansible-vault edit ansible/group_vars/all/life_app.vault.yaml
+```
+
+Add or edit the line:
+
+```yaml
+vault_life_app_google_client_ids: <id>.apps.googleusercontent.com
+```
+
+Use the **Web** OAuth client ID from Google Cloud. Separate several IDs with commas. Then run `site.yaml`.
+
+### Updating an image
+
+Images in `stack/` are pinned as `<image>:<tag>@<digest>`. To update one:
+
+1. Look up the new tag's digest:
+   ```sh
+   docker buildx imagetools inspect ghcr.io/lakaniemi/life-app-api:<git-sha> --format '{{json .Manifest.Digest}}'
+   ```
+2. Replace both the tag and the digest in `stack/compose.yaml` or `stack/projects/<project>.yaml`.
+3. Commit, then run `site.yaml`.
 
 ## Ansible Vault
 
@@ -85,5 +129,5 @@ ansible-playbook ansible/provision.yaml --tags dns
 ansible-lint
 ansible-playbook --syntax-check ansible/provision.yaml
 ansible-playbook --syntax-check ansible/site.yaml
-shellcheck scripts/*.sh
+shellcheck scripts/*.sh stack/postgres/init/*.sh
 ```
