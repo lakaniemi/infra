@@ -13,7 +13,6 @@ ssh_public_key: "{{ lookup('ansible.builtin.pipe', 'op read \"op://Private/hetzn
 home_ip: "{{ vault_home_ip }}"
 
 admin_user: valtteri
-# Written by scripts/new-admin-password.sh.
 admin_password: "{{ vault_admin_password }}"
 admin_password_salt: "{{ vault_admin_password_salt }}"
 

@@ -19,10 +19,6 @@ Ansible configuration for the shared Hetzner server that runs my hobby projects'
    ```sh
    export HCLOUD_TOKEN="$(op read op://Private/hetzner-cloud-api/api-token)"
    ```
-6. On a fresh repo only (no `ansible/group_vars/all/admin_password.vault.yaml` yet), generate the admin password and commit the file it creates:
-   ```sh
-   scripts/new-admin-password.sh
-   ```
 
 ## Provisioning
 
