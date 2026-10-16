@@ -1,0 +1,13 @@
+{
+	servers {
+		# HTTP/3 runs over UDP, which the Hetzner firewall doesn't allow.
+		protocols h1 h2
+	}
+}
+
+life-app-api.lakaniemi.com {
+	reverse_proxy life-app-api:8080 {
+		# Holds requests while the API restarts instead of returning errors.
+		lb_try_duration 5s
+	}
+}
