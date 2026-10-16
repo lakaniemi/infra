@@ -1,7 +1,8 @@
 server_name: hobby
 server_type: cpx12
 server_location: hel1
-server_image: ubuntu-24.04
+# Used only when the server is created or rebuilt (provision.yaml --tags rebuild).
+server_image: ubuntu-26.04
 managed_labels:
   managed-by: ansible-infra
 

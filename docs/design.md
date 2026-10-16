@@ -4,7 +4,8 @@ Configuration for the shared Hetzner server that runs my hobby projects' APIs an
 
 ## Decisions
 
-- **Server:** Hetzner Cloud **CPX12** (1 vCPU, 2 GB RAM, 40 GB NVMe) in **HEL1** (Helsinki). €11.99/month before VAT (€15.05 with Finnish VAT), plus €0.50/month before VAT for the IPv4 address. Ubuntu 24.04 LTS. Upgrade the server type when projects need more.
+- **Server:** Hetzner Cloud **CPX12** (1 vCPU, 2 GB RAM, 40 GB NVMe) in **HEL1** (Helsinki). €11.99/month before VAT (€15.05 with Finnish VAT), plus €0.50/month before VAT for the IPv4 address. Upgrade the server type when projects need more.
+  - **Ubuntu 26.04 LTS.** A new LTS is adopted once its first point release (e.g. 26.04.1) is out, as Ubuntu itself does before offering upgrades to it. The server started on 24.04 and was rebuilt on 26.04 while it held only test data.
 - **IPv4 and IPv6 are both enabled.**
   - IPv4-only client networks couldn't reach the server without IPv4.
   - `github.com` and `ghcr.io` have no IPv6 addresses, so the server couldn't pull images without IPv4.
