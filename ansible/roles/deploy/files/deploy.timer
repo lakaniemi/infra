@@ -1,0 +1,10 @@
+[Unit]
+Description=Run deploy.sh every minute
+
+[Timer]
+OnCalendar=minutely
+# systemd's default lets a run drift by up to a minute.
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target
