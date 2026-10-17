@@ -51,7 +51,7 @@ Do a dry run first. It shows what would change without changing anything:
 ansible-playbook ansible/site.yaml --check --diff
 ```
 
-Use `--tags base`, `--tags docker` or `--tags stack` to run one role.
+Use `--tags base`, `--tags docker`, `--tags stack` or `--tags deploy` to run one role.
 
 ## Rebuilding the server
 
@@ -97,16 +97,43 @@ vault_life_app_google_client_ids: <id>.apps.googleusercontent.com
 
 Use the **Web** OAuth client ID from Google Cloud. Separate several IDs with commas. Then run `site.yaml`.
 
-### Updating an image
+### Updating Caddy or Postgres
 
-Images in `stack/` are pinned as `<image>:<tag>@<digest>`. To update one:
+Their images are pinned in `stack/compose.yaml` as `<image>:<tag>@<digest>`. To update one:
 
 1. Look up the new tag's digest:
    ```sh
-   docker buildx imagetools inspect ghcr.io/lakaniemi/life-app-api:<git-sha> --format '{{json .Manifest.Digest}}'
+   docker buildx imagetools inspect caddy:<tag> --format '{{json .Manifest.Digest}}'
    ```
-2. Replace both the tag and the digest in `stack/compose.yaml` or `stack/projects/<project>.yaml`.
+2. Replace both the tag and the digest in `stack/compose.yaml`.
 3. Commit, then run `site.yaml`.
+
+Project images are deployed by deploy.sh instead (see below).
+
+## Deploys
+
+The server deploys a project within a minute of its CI moving the image's `:production` tag. Projects are listed in `deploy_projects` in `ansible/group_vars/all/vars.yaml`.
+
+On the server:
+
+- Deploy logs:
+  ```sh
+  sudo journalctl -u deploy -f
+  ```
+- The deployed image and version of each project:
+  ```sh
+  cat /var/lib/deploy/*.env
+  ```
+- Deploy now instead of waiting for the timer:
+  ```sh
+  sudo systemctl start deploy.service
+  ```
+- When the timer last ran and runs next:
+  ```sh
+  systemctl list-timers deploy.timer
+  ```
+
+To roll back, point `:production` back at an older version from the project's repo.
 
 ## Ansible Vault
 
@@ -148,5 +175,5 @@ ansible-playbook ansible/provision.yaml --tags dns
 ansible-lint
 ansible-playbook --syntax-check ansible/provision.yaml
 ansible-playbook --syntax-check ansible/site.yaml
-shellcheck scripts/*.sh stack/postgres/init/*.sh
+shellcheck scripts/*.sh stack/postgres/init/*.sh ansible/roles/deploy/files/*.sh
 ```

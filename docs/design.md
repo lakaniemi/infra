@@ -102,15 +102,12 @@ infra/
     provision.yaml           Hetzner resources and DNS (hetzner.hcloud)
     site.yaml                everything inside the server
     roles/                   base (users, SSH, updates, swap), docker, stack, deploy, backup
+    roles/deploy/files/      deploy.sh (below) and its systemd service and timer
   stack/                     copied to the server by the stack role
     compose.yaml             caddy, postgres, and include: of projects/*.yaml
     projects/life-app.yaml   life-app-migrate and life-app-api services
     caddy/Caddyfile          one block per hostname
     postgres/init/           creates per-project databases and roles on first start
-  deploy/deploy.sh           pull-based deploy (below)
-  deploy/projects.conf       per project: image, Compose service, health URL
-  backup/pg-dump.sh          nightly dumps
-  systemd/                   deploy and backup timers and services
   scripts/set-home-ip.sh     stores my current IP as the home IP and updates the firewall (run from home)
   scripts/vault-password.sh  reads the Ansible Vault password from 1Password
   .env.example               variables the server's .env must define
@@ -132,11 +129,13 @@ infra/
 - **Caddy:** `reverse_proxy` with `lb_try_duration` set. Caddy then holds requests for the second or two an API restarts, instead of returning errors.
   - The `caddy/` directory is mounted, not the Caddyfile alone. Ansible replaces files by renaming a new one over them, and a single-file bind mount would keep showing the old file.
   - HTTP/3 is off (`protocols h1 h2`): it runs over UDP, which the Hetzner firewall doesn't allow.
-- **Images are pinned as `tag@digest`** (e.g. `caddy:2.11.7@sha256:…`). Docker pulls by the digest, so a moved tag can't change what runs; the tag shows which version it is. Until the deploy role exists (build step 6), the life-app image is updated by hand the same way. Step 6 moves the life-app pin somewhere deploy.sh owns, so that `site.yaml` doesn't roll back what it deployed.
+- **Images are pinned as `tag@digest`** (e.g. `caddy:2.11.7@sha256:…`). Docker pulls by the digest, so a moved tag can't change what runs; the tag shows which version it is.
+  - Project images aren't pinned in the repo: deploy.sh records them on the server (see *Deploy flow*), so `site.yaml` never rolls back what it deployed.
 - **The stack role** copies `stack/` to `/opt/stack` and runs `docker compose up` through `community.docker.docker_compose_v2`. The module supports `--check` (through compose's `--dry-run`) and reports which containers changed; a `command` task would do neither.
   - `copy` sends every file in `stack/`, tracked or not, and doesn't delete files removed from it; remove those on the server by hand.
   - `up` starts each project's exited migrate container again, every run. That's harmless (no pending migrations, under the migration lock), so the role doesn't count it as a change. Creating or recreating a migrate container, e.g. for a new image, still counts.
   - A change in `stack/` triggers a graceful `caddy reload`.
+  - For a new server or project, it creates the project's deployed-image file pointing at `:production`, before `up`. It never changes an existing one.
 
 ## Deploy flow
 
@@ -147,12 +146,21 @@ infra/
 
 CI has no access to the server.
 
-**On the server**, `deploy.sh` runs every minute from a systemd timer, under `flock` so runs can't overlap. For each project in `projects.conf`:
-1. Resolve `:production` to a digest. Stop if it equals the deployed digest stored in `/var/lib/deploy/<project>`.
-2. Pull the image by digest, then `up -d` the API. Compose runs the project's migrate service first and replaces the API only if the migration succeeds.
-3. Wait for its health check. On success, record the digest. On failure, log the error and leave the digest unrecorded, so the next run retries.
+**On the server**, `deploy.sh` runs every minute from a systemd timer, under `flock` so runs can't overlap. The deploy role writes `/etc/deploy/projects.conf` from `deploy_projects` in `group_vars`. For each project in it:
+1. Resolve `:production` to a digest (`docker buildx imagetools inspect`). Stop if it equals the deployed image in `/var/lib/deploy/<project>.env`.
+2. Pull the image by digest, then `up -d` the API with `<PROJECT>_IMAGE` set to it in the environment. Compose runs the project's migrate service first, and replaces the API only if the migration succeeds.
+3. Check that the API's container runs the new image, then wait for `/health` to report `status: ok`.
+4. On success, record the image in the env file. On failure, log the error and leave the file unchanged, so the next run retries.
 
-**Rollback:** move `:production` back to an older SHA's image. Migrations only move forward, and the project's migration rules keep the previous API version working with the new schema.
+Where the deployed image lives:
+- The env file holds `<PROJECT>_IMAGE=<image>@<digest>`, plus the version as a comment. The project's `include:` in `compose.yaml` reads it through `env_file`, which adds to the variables from `.env`.
+  - Every `docker compose` command, including the stack role's, uses the deployed image, so `site.yaml` doesn't roll back a deploy.
+  - A variable in the shell takes precedence over the env file. That's how deploy.sh tries an image before recording it.
+- The file has no version tag in the image reference. Compose would see a new reference as a changed service, and the next `site.yaml` run would recreate the containers.
+- The health check confirms the image, not the version. The image has no label with its commit, so deploy.sh can't tell which version to expect. Comparing versions is CI's job (see *In the app repo's CI*, step 3). The image check also catches a `site.yaml` run that put the old image back during a deploy.
+- A deploy that keeps failing is retried every minute and logged to the journal (`journalctl -u deploy`). Alerts belong to the *Monitoring* open decision.
+
+**Rollback:** move `:production` back to an older SHA's image, through a manually started workflow in the app repo that points `:production` at the existing `:<sha>` image without rebuilding. Migrations only move forward, and the project's migration rules keep the previous API version working with the new schema.
 
 **Infra changes** (Caddyfile, a new project, an SSH setting) are committed and applied from my laptop with `ansible-playbook ansible/site.yaml`.
 
@@ -177,6 +185,7 @@ Also done: the `life-app-api` ghcr.io package is public, so the server pulls it 
 Still to do:
 - **Health poll in CI:** after publishing, poll `https://life-app-api.lakaniemi.com/health` until it reports the new SHA. This comes once the server and DNS exist.
 - **App config:** point the production API URL at `https://life-app-api.lakaniemi.com`.
+- **Rollback workflow:** a `workflow_dispatch` job that takes a SHA and points `:production` at `:<sha>` (`docker buildx imagetools create`), in the same concurrency group as `publish`.
 
 ## Build order
 
@@ -193,6 +202,6 @@ Still to do:
    - only ports 80 and 443 answer from outside, not Postgres;
    - the containers come back after a reboot;
    - running the playbook a second time reports no changes.
-5. life-app: add the health poll to CI and set the app's production API URL.
-6. Add the deploy role. Do the first deploy end to end, then test a rollback by moving `:production` back.
+5. Add the deploy role. Do the first deploy end to end.
+6. life-app: add the health poll and the rollback workflow to CI, and set the app's production API URL. Test a rollback by moving `:production` back.
 7. Backups: add the backup role once the backup location is decided, and do a test restore.
