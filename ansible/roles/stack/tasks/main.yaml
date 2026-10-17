@@ -31,6 +31,29 @@
   # --diff would print the secrets.
   diff: false
 
+- name: Create the directory for deployed images
+  ansible.builtin.file:
+    path: "{{ deploy_state_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# Only on a new server or project: deploy.sh owns these files afterwards, and
+# its first run replaces :production with the digest it deploys.
+- name: Point new projects at their :production image
+  ansible.builtin.copy:
+    content: |
+      {{ item.name | upper | replace('-', '_') }}_IMAGE={{ item.image }}:production
+    dest: "{{ deploy_state_dir }}/{{ item.name }}.env"
+    owner: root
+    group: root
+    mode: "0644"
+    force: false
+  loop: "{{ deploy_projects }}"
+  loop_control:
+    label: "{{ item.name }}"
+
 # `up` also starts each project's exited migrate container again, which only
 # finds no pending migrations, so that alone isn't reported as a change.
 # Creating or recreating one, e.g. for a new image, still is.

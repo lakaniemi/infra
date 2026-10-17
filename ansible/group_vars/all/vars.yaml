@@ -23,6 +23,16 @@ life_app_db_password: "{{ vault_life_app_db_password }}"
 # The Google OAuth Web client IDs whose sign-ins the API accepts, comma-separated.
 life_app_google_client_ids: "{{ vault_life_app_google_client_ids }}"
 
+# Projects that deploy.sh deploys from their image's :production tag. The image
+# each one runs is kept in <deploy_state_dir>/<name>.env, which the project's
+# include in stack/compose.yaml reads.
+deploy_state_dir: /var/lib/deploy
+deploy_projects:
+  - name: life-app
+    image: ghcr.io/lakaniemi/life-app-api
+    service: life-app-api
+    health_url: https://life-app-api.lakaniemi.com/health
+
 firewall_name: hobby
 firewall_rules:
   - description: http
