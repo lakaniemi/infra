@@ -31,13 +31,17 @@
     signed_by: https://download.docker.com/linux/ubuntu/gpg
   register: docker_apt_repo
 
-- name: Install Docker Engine and the Compose plugin
+- name: Install Docker Engine and its plugins
   ansible.builtin.apt:
     name:
       - docker-ce
       - docker-ce-cli
       - containerd.io
       - docker-compose-plugin
+      # deploy.sh resolves :production tags with `buildx imagetools` and
+      # parses health responses with jq.
+      - docker-buildx-plugin
+      - jq
     state: present
     # Refreshes right after the repo is added, and daily otherwise, which also
     # covers a run that failed between the two tasks. A refresh alone isn't
