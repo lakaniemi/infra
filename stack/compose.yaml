@@ -37,9 +37,11 @@ services:
       start_interval: 1s
     networks: [db]
 
-# Each project is listed: include takes no wildcards.
+# Each project is listed: include takes no wildcards. env_file adds the image
+# deploy.py last deployed to the variables from .env.
 include:
-  - projects/life-app.yaml
+  - path: projects/life-app.yaml
+    env_file: /var/lib/deploy/life-app.env
 
 networks:
   web:
