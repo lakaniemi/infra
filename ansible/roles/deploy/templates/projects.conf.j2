@@ -1,0 +1,5 @@
+# Written by Ansible's deploy role from deploy_projects; edits here are overwritten.
+# <project> <image> <compose service> <health URL>
+{% for project in deploy_projects %}
+{{ project.name }} {{ project.image }} {{ project.service }} {{ project.health_url }}
+{% endfor %}

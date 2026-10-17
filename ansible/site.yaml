@@ -7,3 +7,4 @@
     - { role: base, tags: base }
     - { role: docker, tags: docker }
     - { role: stack, tags: stack }
+    - { role: deploy, tags: deploy }

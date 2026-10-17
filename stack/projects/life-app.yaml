@@ -1,7 +1,7 @@
 services:
   # No restart policy: it runs once per `up` and isn't started again at boot.
   life-app-migrate:
-    image: ghcr.io/lakaniemi/life-app-api:bcb5cb70fde521e863b2f9cf83fb0599ed0b6441@sha256:9d57dfdaae64493868d10af01fe9766f4e19799edcbd387943b58fd6965d1db1
+    image: ${LIFE_APP_IMAGE:?}
     entrypoint: ["/migrate"]
     command: ["up"]
     environment:
@@ -12,7 +12,7 @@ services:
     networks: [db]
 
   life-app-api:
-    image: ghcr.io/lakaniemi/life-app-api:bcb5cb70fde521e863b2f9cf83fb0599ed0b6441@sha256:9d57dfdaae64493868d10af01fe9766f4e19799edcbd387943b58fd6965d1db1
+    image: ${LIFE_APP_IMAGE:?}
     restart: unless-stopped
     environment:
       DATABASE_URL: ${LIFE_APP_DATABASE_URL:?}

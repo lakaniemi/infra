@@ -1,0 +1,42 @@
+- name: Create /etc/deploy
+  ansible.builtin.file:
+    path: /etc/deploy
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Write the list of projects to deploy
+  ansible.builtin.template:
+    src: projects.conf.j2
+    dest: /etc/deploy/projects.conf
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install deploy.sh
+  ansible.builtin.copy:
+    src: deploy.sh
+    dest: /usr/local/bin/deploy.sh
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the deploy service and timer
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: /etc/systemd/system/{{ item }}
+    owner: root
+    group: root
+    mode: "0644"
+  loop: [deploy.service, deploy.timer]
+  register: deploy_units
+  notify: Restart the deploy timer
+
+- name: Run deploys every minute
+  ansible.builtin.systemd_service:
+    name: deploy.timer
+    enabled: true
+    state: started
+    # A reload alone isn't reported as a change.
+    daemon_reload: "{{ deploy_units is changed }}"

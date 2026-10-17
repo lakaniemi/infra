@@ -1,0 +1,5 @@
+# A running timer keeps its old schedule until restarted.
+- name: Restart the deploy timer
+  ansible.builtin.systemd_service:
+    name: deploy.timer
+    state: restarted
