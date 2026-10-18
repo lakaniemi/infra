@@ -1,0 +1,11 @@
+[Unit]
+Description=Deploy projects whose :production image has moved
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/deploy
+# A hung pull, migration or health check would otherwise block later deploys.
+TimeoutStartSec=15min

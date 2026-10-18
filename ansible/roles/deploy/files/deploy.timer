@@ -1,0 +1,9 @@
+[Unit]
+Description=Deploy once after boot
+
+[Timer]
+# Catches a :production move made while the server was down.
+OnBootSec=2min
+
+[Install]
+WantedBy=timers.target
