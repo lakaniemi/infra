@@ -37,6 +37,26 @@ services:
       start_interval: 1s
     networks: [db]
 
+  # Internet-facing through Caddy, so it gets no privileges: its only effect is
+  # creating trigger files under /var/lib/webhooks for the host's .path units.
+  webhooks:
+    image: python:3.14.8-slim-trixie@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170
+    restart: unless-stopped
+    command: ["python", "/app/listener.py"]
+    # Python as PID 1 would ignore SIGTERM, delaying every stop by 10 seconds.
+    init: true
+    user: "65534:65534"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+      WEBHOOK_DEPLOY_TOKEN: ${WEBHOOK_DEPLOY_TOKEN:?}
+    volumes:
+      - ./webhooks:/app:ro
+      - /var/lib/webhooks:/hooks
+    networks: [web]
+
 # Each project is listed: include takes no wildcards. env_file adds the image
 # deploy.py last deployed to the variables from .env.
 include:

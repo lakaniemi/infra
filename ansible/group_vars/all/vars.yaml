@@ -23,8 +23,10 @@ life_app_db_password: "{{ vault_life_app_db_password }}"
 # The Google OAuth Web client IDs whose sign-ins the API accepts, comma-separated.
 life_app_google_client_ids: "{{ vault_life_app_google_client_ids }}"
 
-# Bearer token for POST https://webhooks.lakaniemi.com/deploy, also stored as
-# a GitHub Actions secret in each project repo that deploys.
+# Each hook is POST https://webhooks.lakaniemi.com/<hook>, with its own token
+# (WEBHOOK_<HOOK>_TOKEN in the stack's .env) and trigger directory.
+webhook_hooks: [deploy]
+# Also stored as a GitHub Actions secret in each project repo that deploys.
 webhook_deploy_token: "{{ vault_webhook_deploy_token }}"
 
 # Projects that deploy.py deploys from their image's :production tag. The image

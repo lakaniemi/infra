@@ -10,6 +10,18 @@
       "Adding a project's settings" in the README.
     quiet: true
 
+# Copied ahead of the rest, so a change restarts the listener: Compose doesn't
+# notice changed files in a bind mount. The stack copy then finds it unchanged.
+- name: Copy the webhook listener
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../stack/webhooks/"
+    dest: "{{ stack_dir }}/webhooks/"
+    owner: root
+    group: root
+    mode: preserve
+    directory_mode: "0755"
+  notify: Restart the webhook listener
+
 # Copies the files as tracked in Git, keeping the init scripts executable.
 # Files deleted from stack/ stay on the server until removed by hand.
 - name: Copy the Compose stack
@@ -54,6 +66,24 @@
   loop: "{{ deploy_projects }}"
   loop_control:
     label: "{{ item.name }}"
+
+- name: Create the directory for webhook triggers
+  ansible.builtin.file:
+    path: /var/lib/webhooks
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# The webhooks container runs as nobody, so it can create files only in these.
+- name: Create a trigger directory per webhook
+  ansible.builtin.file:
+    path: /var/lib/webhooks/{{ item }}
+    state: directory
+    owner: nobody
+    group: nogroup
+    mode: "0755"
+  loop: "{{ webhook_hooks }}"
 
 # `up` also starts each project's exited migrate container again, which only
 # finds no pending migrations, so that alone isn't reported as a change.

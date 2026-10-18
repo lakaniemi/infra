@@ -5,6 +5,14 @@
 	}
 }
 
+webhooks.lakaniemi.com {
+	# The listener never reads request bodies.
+	request_body {
+		max_size 1KB
+	}
+	reverse_proxy webhooks:8080
+}
+
 life-app-api.lakaniemi.com {
 	reverse_proxy life-app-api:8080 {
 		# Holds requests while the API restarts instead of returning errors.
