@@ -4,6 +4,7 @@
       - vault_postgres_password | default('') | length > 0
       - vault_life_app_db_password | default('') | length > 0
       - vault_life_app_google_client_ids | default('') | length > 0
+      - vault_webhook_deploy_token | default('') | length > 0
     fail_msg: >-
       A stack secret is missing. Add it with ansible-vault edit; see
       "Adding a project's settings" in the README.
