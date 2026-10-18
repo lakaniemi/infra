@@ -9,7 +9,7 @@ Configuration for the shared Hetzner server that runs my hobby projects' APIs an
 - **IPv4 and IPv6 are both enabled.**
   - IPv4-only client networks couldn't reach the server without IPv4.
   - `github.com` and `ghcr.io` have no IPv6 addresses, so the server couldn't pull images without IPv4.
-- **DNS:** every service has its own hostname on `lakaniemi.com`, named after the project, e.g. `life-app-api.lakaniemi.com`. No project gets a generic name like `api.`. Each hostname has A and AAAA records. Apps never use an IP, so moving servers is a DNS change, never an app update.
+- **DNS:** every service has its own hostname on `lakaniemi.com`, named after the project, e.g. `life-app-api.lakaniemi.com`. No project gets a generic name like `api.`. The infra's own endpoints are the exception: webhooks are served from `webhooks.lakaniemi.com` (see *Webhooks*). Each hostname has A and AAAA records. Apps never use an IP, so moving servers is a DNS change, never an app update.
   - The zone is hosted on Hetzner DNS and managed by Ansible (`hetzner.hcloud` `zone` and `zone_rrset`), so records live in the repo and the service records follow the server's IPs automatically.
   - The domain is registered at Namecheap, whose only role is pointing the nameservers at Hetzner.
   - The zone started fresh: nothing was carried over from the previous DNS host (Kapsi). The domain sends and receives no mail, so it publishes a null MX, `v=spf1 -all` and DMARC `p=reject` to stop spoofing.
@@ -32,7 +32,7 @@ Configuration for the shared Hetzner server that runs my hobby projects' APIs an
   - The old API serves during the migration, so migrations must work with the previous API version. That's already a rule in life-app, and rollbacks need it anyway.
   - The migrate service can later use a role with schema-change (DDL) rights, while the API's role keeps only data access.
 - **Backups:** a nightly `pg_dump` of each database, copied off the server. Hetzner's own server backups aren't used: they copy the whole disk while Postgres is running, so the database copy isn't guaranteed to be consistent.
-- **Deploys are pull-based.** GitHub Actions holds no credentials for the server; the server pulls new images from ghcr.io itself. See *Deploy flow*.
+- **Deploys are triggered, then pulled.** GitHub Actions can only ask the server to check for a new image, through a webhook. The server then looks up `:production` on ghcr.io and pulls it itself, so CI holds no credentials that can choose or change what runs. See *Webhooks* and *Deploy flow*.
 - **SSH (admin access):** key-only OpenSSH. The Hetzner firewall allows port 22 only from my home IP. Allowing my workplace VPN's outgoing IPs too was considered and left out for now; it would be a second firewall rule, with the IPs kept in Ansible Vault. No VPN or other access product is added: the main remaining risk is an OpenSSH flaw exploitable before login, and automatic security updates cover that. See *Server baseline*.
 
 ## Open decisions
@@ -102,21 +102,19 @@ infra/
     provision.yaml           Hetzner resources and DNS (hetzner.hcloud)
     site.yaml                everything inside the server
     roles/                   base (users, SSH, updates, swap), docker, stack, deploy, backup
+    roles/deploy/files/      deploy.py (see Deploy flow) and its systemd units
   stack/                     copied to the server by the stack role
-    compose.yaml             caddy, postgres, and include: of projects/*.yaml
+    compose.yaml             caddy, postgres, webhooks, and include: of projects/*.yaml
     projects/life-app.yaml   life-app-migrate and life-app-api services
     caddy/Caddyfile          one block per hostname
     postgres/init/           creates per-project databases and roles on first start
-  deploy/deploy.sh           pull-based deploy (below)
-  deploy/projects.conf       per project: image, Compose service, health URL
-  backup/pg-dump.sh          nightly dumps
-  systemd/                   deploy and backup timers and services
+    webhooks/listener.py     turns webhook requests into trigger files (see Webhooks)
   scripts/set-home-ip.sh     stores my current IP as the home IP and updates the firewall (run from home)
   scripts/vault-password.sh  reads the Ansible Vault password from 1Password
   .env.example               variables the server's .env must define
 ```
 
-- **Secrets:** the server's `.env` (root-owned, mode 600) holds Postgres passwords and each API's settings, such as `DATABASE_URL` and Google client IDs. Ansible writes it from Ansible Vault, so the encrypted secrets can live in the repo.
+- **Secrets:** the server's `.env` (root-owned, mode 600) holds Postgres passwords, the webhook tokens and each API's settings, such as `DATABASE_URL` and Google client IDs. Ansible writes it from Ansible Vault, so the encrypted secrets can live in the repo.
   - Variables are prefixed per project (`LIFE_APP_…`), and each service picks its own through `${…:?}` interpolation. Postgres never sees an API's settings, and a missing variable stops `up` with an error naming it.
   - Included project files use the main `compose.yaml`'s `.env` too, so one file serves the whole stack.
   - The passwords were generated straight into the vault files (`openssl rand -hex 32` piped into `ansible-vault encrypt`), so they were never printed. Hex needs no escaping in `DATABASE_URL`.
@@ -127,36 +125,67 @@ infra/
   - If an init script fails, Postgres restarts and skips initialisation, because the data directory now exists. On a new server, remove the `hobby_pgdata` volume and run the playbook again.
   - Changing a password in the vault later doesn't change it in Postgres: init doesn't run again. Rotating one needs an `ALTER ROLE` as well.
   - The healthcheck uses `pg_isready -h 127.0.0.1`. While the init scripts run, Postgres listens only on its Unix socket, so a socket check would report it ready too early.
-- **Networks:** `web` connects Caddy and the APIs. `db` connects Postgres and the APIs. Postgres isn't on `web`.
+- **Networks:** `web` connects Caddy, the APIs and the webhook listener. `db` connects Postgres and the APIs. Postgres isn't on `web`.
   - `db` is `internal: true`, so Postgres has no route to the internet. The APIs reach the internet (e.g. Google's signing keys) through `web`.
 - **Caddy:** `reverse_proxy` with `lb_try_duration` set. Caddy then holds requests for the second or two an API restarts, instead of returning errors.
   - The `caddy/` directory is mounted, not the Caddyfile alone. Ansible replaces files by renaming a new one over them, and a single-file bind mount would keep showing the old file.
   - HTTP/3 is off (`protocols h1 h2`): it runs over UDP, which the Hetzner firewall doesn't allow.
-- **Images are pinned as `tag@digest`** (e.g. `caddy:2.11.7@sha256:…`). Docker pulls by the digest, so a moved tag can't change what runs; the tag shows which version it is. Until the deploy role exists (build step 6), the life-app image is updated by hand the same way. Step 6 moves the life-app pin somewhere deploy.sh owns, so that `site.yaml` doesn't roll back what it deployed.
+- **Images are pinned as `tag@digest`** (e.g. `caddy:2.11.7@sha256:…`). Docker pulls by the digest, so a moved tag can't change what runs; the tag shows which version it is.
+  - Project images aren't pinned in the repo: deploy.py records them on the server (see *Deploy flow*), so `site.yaml` never rolls back what it deployed.
 - **The stack role** copies `stack/` to `/opt/stack` and runs `docker compose up` through `community.docker.docker_compose_v2`. The module supports `--check` (through compose's `--dry-run`) and reports which containers changed; a `command` task would do neither.
   - `copy` sends every file in `stack/`, tracked or not, and doesn't delete files removed from it; remove those on the server by hand.
   - `up` starts each project's exited migrate container again, every run. That's harmless (no pending migrations, under the migration lock), so the role doesn't count it as a change. Creating or recreating a migrate container, e.g. for a new image, still counts.
   - A change in `stack/` triggers a graceful `caddy reload`.
+  - For a new server or project, it creates the project's deployed-image file pointing at `:production`, before `up`. It never changes an existing one.
+  - `stack/webhooks/` is copied first, on its own, so a change to the listener restarts it: Compose doesn't notice changed files in a bind mount.
+
+## Webhooks
+
+`POST https://webhooks.lakaniemi.com/<hook>` with `Authorization: Bearer <token>` asks the server to do something. `deploy` is the only hook so far.
+
+- **The webhook only signals; the server decides.** The listener creates an empty trigger file in `/var/lib/webhooks/<hook>/`, answers 202 and does nothing else. A systemd `.path` unit on the host watches that directory and starts the hook's service, which works out what to do on its own (for `deploy`: from ghcr.io). This is how Flux's `Receiver` and Argo CD's webhooks work: a request only says "check now", and its body decides nothing.
+  - A stolen token can only make the server check early. It can't choose what runs.
+  - The more common single-server setup, e.g. `adnanh/webhook` or Watchtower's HTTP API, runs the deploy inside the receiver. The internet-facing process then needs the Docker socket, which is root-equivalent.
+- **A file links the listener and the service.** File permissions are the privilege boundary, and nothing on the host listens on the network.
+  - Having the listener start the service over D-Bus, allowed by a polkit rule, was considered. It would put the system D-Bus socket in an internet-facing container, with polkit as the only barrier, and polkit rules on unit names are known to be fragile.
+  - Triggers collapse: the service removes the file when it starts, and systemd checks the directory again when the service exits. A trigger during a run starts one more run, and a burst starts only one.
+  - `sudo touch /var/lib/webhooks/<hook>/requested` triggers a hook by hand.
+- **The listener** is ~50 lines of standard-library Python (`stack/webhooks/listener.py`) in the official `python:*-slim` image.
+  - It runs as `nobody`, with a read-only filesystem, no capabilities and no Docker socket. Its only writable mount is `/var/lib/webhooks`, and only the per-hook directories belong to `nobody`.
+  - A hook exists when its token (`WEBHOOK_<HOOK>_TOKEN`) is set and its directory exists. Each hook has its own token in Ansible Vault, so a leaked token triggers only its hook.
+  - It compares tokens in constant time and never reads the request body; Caddy also limits bodies to 1 KB. A bearer token is enough, since there's no body to sign: GitHub's HMAC signatures protect payloads.
+  - Adding a hook: add it to `webhook_hooks`, add its token, and add a `.path` unit and service for it.
+- The token is also a GitHub Actions secret in each repo that deploys. CI calls the hook itself, instead of a repository webhook configured in GitHub, so the run that published the image also sees whether the deploy happened (see *Deploy flow*).
 
 ## Deploy flow
 
 **In the app repo's CI** (on `main`, after tests pass):
 1. Build and push `ghcr.io/lakaniemi/<image>:<sha>`, using the built-in `GITHUB_TOKEN` with `packages: write`.
 2. Point the `:production` tag at the new image.
-3. Poll the public health endpoint until it reports the new SHA. Fail the run after a timeout.
+3. Call the deploy hook.
+4. Poll the public health endpoint until it reports the new SHA. Fail the run after a timeout.
 
-CI has no access to the server.
+The hook is called once. If a deploy fails or the call is lost, the run fails, and re-running it retries. GitHub doesn't redeliver failed webhooks either, so CI checking the result is what makes this reliable.
 
-**On the server**, `deploy.sh` runs every minute from a systemd timer, under `flock` so runs can't overlap. For each project in `projects.conf`:
-1. Resolve `:production` to a digest. Stop if it equals the deployed digest stored in `/var/lib/deploy/<project>`.
-2. Pull the image by digest, then `up -d` the API. Compose runs the project's migrate service first and replaces the API only if the migration succeeds.
-3. Wait for its health check. On success, record the digest. On failure, log the error and leave the digest unrecorded, so the next run retries.
+**On the server**, `deploy.service` runs `/usr/local/bin/deploy` (`ansible/roles/deploy/files/deploy.py`, standard-library Python) when `deploy.path` sees a trigger file, and once after boot from `deploy.timer`. The boot run catches a `:production` move made while the server was down. It removes the trigger files, then, for each project in `/etc/deploy/projects.json` (written from `deploy_projects` in `group_vars`):
+1. Resolve `:production` to a digest through the registry API, without pulling. Stop if it equals the deployed image.
+2. Pull the image by digest, then `up -d` the API with `<PROJECT>_IMAGE` set to it in the environment. Compose runs the project's migrate service first, and replaces the API only if the migration succeeds.
+3. Check that the API's container runs the new image, then wait for `/health` to report `status: ok`.
+4. On success, record the image in the deployed-image file and remove the previous image. On failure, log the error to the journal (`journalctl -u deploy`) and leave the file unchanged.
 
-**Rollback:** move `:production` back to an older SHA's image. Migrations only move forward, and the project's migration rules keep the previous API version working with the new schema.
+Details:
+- **The deployed-image file**, `/var/lib/deploy/<project>.env`, holds `<PROJECT>_IMAGE=<image>@<digest>`, plus the version as a comment. The project's `include:` in `compose.yaml` reads it through `env_file`, which adds to the variables from `.env`.
+  - Every `docker compose` command, including the stack role's, uses the deployed image, so `site.yaml` doesn't roll back a deploy.
+  - A variable in the shell takes precedence over the env file. That's how deploy.py tries an image before recording it.
+  - The image reference has no version tag. Compose would see a new reference as a changed service, and the next `site.yaml` run would recreate the containers.
+- **The health check confirms the image, not the version.** The image has no label with its commit, so deploy.py can't tell which version to expect. Comparing versions is CI's job (step 4). The image check also catches a `site.yaml` run that put the old image back during a deploy.
+- `TimeoutStartSec=15min` stops a hung pull, migration or health check from blocking later deploys.
+
+**Rollback:** move `:production` back to an older SHA's image, through a manually started workflow in the app repo that points `:production` at the existing `:<sha>` image without rebuilding, then calls the deploy hook. Migrations only move forward, and the project's migration rules keep the previous API version working with the new schema.
 
 **Infra changes** (Caddyfile, a new project, an SSH setting) are committed and applied from my laptop with `ansible-playbook ansible/site.yaml`.
 
-**Who can deploy:** whoever can push `:production` to the image's package. Keep that limited to the app repo's own workflows:
+**Who can deploy:** whoever can push `:production` to the image's package. The deploy hook's token isn't a deploy right: it only makes the server check `:production` sooner. Keep pushing limited to the app repo's own workflows:
 - Link each image package to its repo, so access follows the repo's.
 - No personal access tokens with `write:packages`.
 - Turn on 2FA for my GitHub account, and branch protection on `main`.
@@ -175,7 +204,8 @@ Done in [life-app#19](https://github.com/lakaniemi/life-app/pull/19):
 Also done: the `life-app-api` ghcr.io package is public, so the server pulls it without credentials.
 
 Still to do:
-- **Health poll in CI:** after publishing, poll `https://life-app-api.lakaniemi.com/health` until it reports the new SHA. This comes once the server and DNS exist.
+- **Deploy hook and health poll in CI:** after publishing, call `https://webhooks.lakaniemi.com/deploy` with the token from an Actions secret, then poll `https://life-app-api.lakaniemi.com/health` until it reports the new SHA.
+- **Rollback workflow:** a `workflow_dispatch` job that takes a SHA, points `:production` at `:<sha>` (`docker buildx imagetools create`) and calls the deploy hook, in the same concurrency group as `publish`.
 - **App config:** point the production API URL at `https://life-app-api.lakaniemi.com`.
 
 ## Build order
@@ -193,6 +223,9 @@ Still to do:
    - only ports 80 and 443 answer from outside, not Postgres;
    - the containers come back after a reboot;
    - running the playbook a second time reports no changes.
-5. life-app: add the health poll to CI and set the app's production API URL.
-6. Add the deploy role. Do the first deploy end to end, then test a rollback by moving `:production` back.
+5. Add the webhook listener and the deploy role. Then verify:
+   - the deploy hook answers 202 with the token, and 401 without it;
+   - a trigger deploys `:production`, and a second one finds it up to date;
+   - running the playbook a second time reports no changes.
+6. life-app: add the deploy hook and health poll to CI, the rollback workflow, and the app's production API URL. Then deploy a new version end to end, and test a rollback.
 7. Backups: add the backup role once the backup location is decided, and do a test restore.

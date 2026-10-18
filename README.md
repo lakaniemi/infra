@@ -51,7 +51,7 @@ Do a dry run first. It shows what would change without changing anything:
 ansible-playbook ansible/site.yaml --check --diff
 ```
 
-Use `--tags base`, `--tags docker` or `--tags stack` to run one role.
+Use `--tags base`, `--tags docker`, `--tags stack` or `--tags deploy` to run one role.
 
 ## Rebuilding the server
 
@@ -97,16 +97,53 @@ vault_life_app_google_client_ids: <id>.apps.googleusercontent.com
 
 Use the **Web** OAuth client ID from Google Cloud. Separate several IDs with commas. Then run `site.yaml`.
 
-### Updating an image
+### Updating Caddy, Postgres or the webhook listener's Python
 
-Images in `stack/` are pinned as `<image>:<tag>@<digest>`. To update one:
+Their images are pinned in `stack/compose.yaml` as `<image>:<tag>@<digest>`. To update one:
 
 1. Look up the new tag's digest:
    ```sh
-   docker buildx imagetools inspect ghcr.io/lakaniemi/life-app-api:<git-sha> --format '{{json .Manifest.Digest}}'
+   docker buildx imagetools inspect caddy:<tag> --format '{{json .Manifest.Digest}}'
    ```
-2. Replace both the tag and the digest in `stack/compose.yaml` or `stack/projects/<project>.yaml`.
+2. Replace both the tag and the digest in `stack/compose.yaml`.
 3. Commit, then run `site.yaml`.
+
+Project images are deployed instead (see below).
+
+## Deploys
+
+A project's CI deploys by moving its image's `:production` tag and then calling the deploy webhook:
+
+```sh
+curl -fsS -X POST -H "Authorization: Bearer $DEPLOY_WEBHOOK_TOKEN" https://webhooks.lakaniemi.com/deploy
+```
+
+The server then deploys every project in `deploy_projects` (`ansible/group_vars/all/vars.yaml`) whose `:production` has moved. It also checks once after each boot.
+
+### Giving a project repo the token
+
+```sh
+ansible-vault view ansible/group_vars/all/webhooks.vault.yaml \
+  | sed -n 's/^vault_webhook_deploy_token: //p' \
+  | gh secret set DEPLOY_WEBHOOK_TOKEN -R lakaniemi/<repo>
+```
+
+### On the server
+
+- Deploy now, without the webhook:
+  ```sh
+  sudo touch /var/lib/webhooks/deploy/requested
+  ```
+- Deploy logs:
+  ```sh
+  sudo journalctl -u deploy -f
+  ```
+- The deployed image and version of each project:
+  ```sh
+  cat /var/lib/deploy/*.env
+  ```
+
+To roll back, point `:production` back at an older version from the project's repo.
 
 ## Ansible Vault
 
