@@ -4,6 +4,7 @@ dns_ttl: 3600
 # Each gets A and AAAA records pointing at the server.
 dns_service_hostnames:
   - life-app-api
+  - webhooks
 
 # The domain sends and receives no mail; these stop others from spoofing it.
 dns_static_records:

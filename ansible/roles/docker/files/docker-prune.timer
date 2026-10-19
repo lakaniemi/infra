@@ -1,0 +1,10 @@
+[Unit]
+Description=Remove unused Docker images weekly
+
+[Timer]
+OnCalendar=weekly
+# Runs at boot if the server was down at the scheduled time.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,8 @@
+[Unit]
+Description=Deploy when the deploy webhook leaves a trigger file
+
+[Path]
+DirectoryNotEmpty=/var/lib/webhooks/deploy
+
+[Install]
+WantedBy=paths.target

@@ -4,10 +4,23 @@
       - vault_postgres_password | default('') | length > 0
       - vault_life_app_db_password | default('') | length > 0
       - vault_life_app_google_client_ids | default('') | length > 0
+      - vault_webhook_deploy_token | default('') | length > 0
     fail_msg: >-
       A stack secret is missing. Add it with ansible-vault edit; see
       "Adding a project's settings" in the README.
     quiet: true
+
+# Copied ahead of the rest, so a change restarts the listener: Compose doesn't
+# notice changed files in a bind mount. The stack copy then finds it unchanged.
+- name: Copy the webhook listener
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../stack/webhooks/"
+    dest: "{{ stack_dir }}/webhooks/"
+    owner: root
+    group: root
+    mode: preserve
+    directory_mode: "0755"
+  notify: Restart the webhook listener
 
 # Copies the files as tracked in Git, keeping the init scripts executable.
 # Files deleted from stack/ stay on the server until removed by hand.
@@ -30,6 +43,47 @@
     mode: "0600"
   # --diff would print the secrets.
   diff: false
+
+- name: Create the directory for deployed images
+  ansible.builtin.file:
+    path: "{{ deploy_state_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# Only on a new server or project: deploy.py owns these files afterwards, and
+# its first run replaces :production with the digest it deploys.
+- name: Point new projects at their :production image
+  ansible.builtin.copy:
+    content: |
+      {{ item.name | upper | replace('-', '_') }}_IMAGE={{ item.image }}:production
+    dest: "{{ deploy_state_dir }}/{{ item.name }}.env"
+    owner: root
+    group: root
+    mode: "0644"
+    force: false
+  loop: "{{ deploy_projects }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Create the directory for webhook triggers
+  ansible.builtin.file:
+    path: /var/lib/webhooks
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# The webhooks container runs as nobody, so it can create files only in these.
+- name: Create a trigger directory per webhook
+  ansible.builtin.file:
+    path: /var/lib/webhooks/{{ item }}
+    state: directory
+    owner: nobody
+    group: nogroup
+    mode: "0755"
+  loop: "{{ webhook_hooks }}"
 
 # `up` also starts each project's exited migrate container again, which only
 # finds no pending migrations, so that alone isn't reported as a change.
