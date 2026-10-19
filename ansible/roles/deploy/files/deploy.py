@@ -157,13 +157,6 @@ def deploy(name, image, service, health_url):
     temporary.replace(state_file)
     log(name, f"deployed version {version}")
 
-    # A rollback pulls it again. When current is the reference a new server
-    # starts with (…:production), only that tag goes: the image stays under
-    # its digest reference.
-    result = subprocess.run(["docker", "image", "rm", current], capture_output=True, text=True)
-    if result.returncode != 0:
-        log(name, f"couldn't remove the previous image: {result.stderr.strip()}", sys.stderr)
-
 
 def main():
     with open(LOCK_FILE, "w") as lock:

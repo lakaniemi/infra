@@ -172,7 +172,7 @@ The hook is called once. If a deploy fails or the call is lost, the run fails, a
 1. Resolve `:production` to a digest through the registry API, without pulling. Stop if it equals the deployed image.
 2. Pull the image by digest, then `up -d` the API with `<PROJECT>_IMAGE` set to it in the environment. Compose runs the project's migrate service first, and replaces the API only if the migration succeeds.
 3. Check that the API's container runs the new image, then wait for `/health` to report `status: ok`.
-4. On success, record the image in the deployed-image file and remove the previous image. On failure, log the error to the journal (`journalctl -u deploy`) and leave the file unchanged.
+4. On success, record the image in the deployed-image file. The previous image stays until the weekly prune (see *Server baseline*). On failure, log the error to the journal (`journalctl -u deploy`) and leave the file unchanged.
 
 Details:
 - **The deployed-image file**, `/var/lib/deploy/<project>.env`, holds `<PROJECT>_IMAGE=<image>@<digest>`, plus the version as a comment. The project's `include:` in `compose.yaml` reads it through `env_file`, which adds to the variables from `.env`.
