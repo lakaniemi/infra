@@ -2,6 +2,7 @@ server_name: hobby
 server_type: cpx12
 server_location: hel1
 # Used only when the server is created or rebuilt (provision.yaml --tags rebuild).
+# Move to a new LTS once its first point release (e.g. 26.04.1) is out.
 server_image: ubuntu-26.04
 managed_labels:
   managed-by: ansible-infra
