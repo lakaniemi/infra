@@ -1,4 +1,2 @@
-.vault-password
 stack/.env
-*.retry
 .ansible/

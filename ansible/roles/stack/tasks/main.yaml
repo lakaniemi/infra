@@ -46,7 +46,7 @@
 
 - name: Create the directory for deployed images
   ansible.builtin.file:
-    path: "{{ deploy_state_dir }}"
+    path: /var/lib/deploy
     state: directory
     owner: root
     group: root
@@ -58,7 +58,7 @@
   ansible.builtin.copy:
     content: |
       {{ item.name | upper | replace('-', '_') }}_IMAGE={{ item.image }}:production
-    dest: "{{ deploy_state_dir }}/{{ item.name }}.env"
+    dest: /var/lib/deploy/{{ item.name }}.env
     owner: root
     group: root
     mode: "0644"
