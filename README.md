@@ -1,6 +1,8 @@
 # infra
 
-Ansible configuration for the shared Hetzner server that runs my hobby projects' APIs and their Postgres databases, and for the `lakaniemi.com` DNS zone. See [docs/design.md](docs/design.md) for the decisions behind it.
+Ansible configuration for the shared Hetzner server that runs my hobby projects' APIs and their Postgres databases, and for the `lakaniemi.com` DNS zone.
+
+On the server, Docker Compose runs Caddy in front of each project's API, one Postgres shared by all projects, and a webhook listener. The listener only creates trigger files; systemd units on the host react to them, e.g. by deploying. Unfinished work is listed in [docs/todo.md](docs/todo.md).
 
 ## Setup
 
@@ -51,22 +53,28 @@ Do a dry run first. It shows what would change without changing anything:
 ansible-playbook ansible/site.yaml --check --diff
 ```
 
+A dry run of a change that adds a service or systemd unit fails at the tasks that start it, since the dry run didn't install it. The real run works.
+
 Use `--tags base`, `--tags docker`, `--tags stack` or `--tags deploy` to run one role.
 
 ## Rebuilding the server
 
 This reinstalls the server from `server_image` in `ansible/group_vars/all/vars.yaml`, e.g. for a new Ubuntu release. It wipes the disk, databases included; the IPs stay the same.
 
-1. Rebuild it, and type the server name when asked:
+1. Dump each database that holds real data on the server, then copy the dumps to your computer with `scp`:
+   ```sh
+   sudo docker compose -f /opt/stack/compose.yaml exec -T postgres pg_dump -U postgres life_app > ~/life_app.sql
+   ```
+2. Rebuild it, and type the server name when asked:
    ```sh
    ansible-playbook ansible/provision.yaml --tags rebuild
    ```
-2. Replace the old host key, using the IP from `ansible-inventory --host hobby`:
+3. Replace the old host key, using the IP from `ansible-inventory --host hobby`:
    ```sh
    ssh-keygen -R <ip>
    ssh root@<ip> true
    ```
-3. Configure it as a new server, connecting as root:
+4. Configure it as a new server, connecting as root:
    ```sh
    ansible-playbook ansible/site.yaml -e ansible_user=root --check --diff
    ansible-playbook ansible/site.yaml -e ansible_user=root
@@ -80,6 +88,20 @@ This reinstalls the server from `server_image` in `ansible/group_vars/all/vars.y
 sudo docker compose -f /opt/stack/compose.yaml ps
 sudo docker compose -f /opt/stack/compose.yaml logs -f life-app-api
 ```
+
+Files deleted from `stack/` stay in `/opt/stack` until you remove them there by hand.
+
+### Postgres
+
+- Changing a database password in the vault doesn't change it in Postgres. Run `ALTER ROLE <role> PASSWORD '<password>'` in `psql` as well:
+  ```sh
+  sudo docker compose -f /opt/stack/compose.yaml exec postgres psql -U postgres
+  ```
+- The scripts in `stack/postgres/init/` run only when the data volume is empty. If one fails on a new server, fix it, remove the volume and run `site.yaml` again:
+  ```sh
+  sudo docker compose -f /opt/stack/compose.yaml down
+  sudo docker volume rm hobby_pgdata
+  ```
 
 ### Adding a project's settings
 
@@ -145,6 +167,14 @@ ansible-vault view ansible/group_vars/all/webhooks.vault.yaml \
 
 To roll back, point `:production` back at an older version from the project's repo.
 
+### Adding a webhook
+
+Each hook is `POST https://webhooks.lakaniemi.com/<hook>` with its own token. To add one:
+
+1. Add it to `webhook_hooks` in `ansible/group_vars/all/vars.yaml`.
+2. Add its token as `vault_webhook_<hook>_token` (`openssl rand -hex 32`) to `webhooks.vault.yaml`, expose it in `vars.yaml`, and pass it to the listener as `WEBHOOK_<HOOK>_TOKEN` through `ansible/roles/stack/templates/env.j2` and `stack/compose.yaml`. Add it to the secrets check in `ansible/roles/stack/tasks/main.yaml` too.
+3. Add a `.path` unit watching `/var/lib/webhooks/<hook>` and the service it starts, like `deploy.path` and `deploy.service` in `ansible/roles/deploy/files/`.
+
 ## Ansible Vault
 
 Ansible reads the vault password from 1Password, so these commands need no password file.
@@ -173,7 +203,7 @@ scripts/set-home-ip.sh
 
 ## DNS
 
-Records are defined in `ansible/group_vars/all/dns.yaml`. To add a service hostname, add it to `dns_service_hostnames` and run:
+The domain is registered at Namecheap, whose only job is pointing its nameservers at Hetzner's. Records are defined in `ansible/group_vars/all/dns.yaml`. To add a service hostname, add it to `dns_service_hostnames` and run:
 
 ```sh
 ansible-playbook ansible/provision.yaml --tags dns
