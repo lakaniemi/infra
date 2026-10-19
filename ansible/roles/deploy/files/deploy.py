@@ -26,6 +26,10 @@ TRIGGER_DIR = Path("/var/lib/webhooks/deploy")
 COMPOSE_FILE = "/opt/stack/compose.yaml"
 LOCK_FILE = "/run/lock/deploy.lock"
 HEALTH_TIMEOUT = 60
+# Both end up in the deployed-image file, which decides what runs, so only
+# these shapes may get in.
+DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
+VERSION = re.compile(r"[0-9A-Za-z._-]{1,64}")
 # Multi-platform images have an index; single-platform ones only a manifest.
 MANIFEST_TYPES = ", ".join([
     "application/vnd.oci.image.index.v1+json",
@@ -100,7 +104,10 @@ def wait_until_healthy(url):
             with urllib.request.urlopen(url, timeout=5) as response:
                 body = json.load(response)
             if body.get("status") == "ok":
-                return body.get("version", "unknown")
+                version = body.get("version")
+                if isinstance(version, str) and VERSION.fullmatch(version):
+                    return version
+                return "unknown"
             last = json.dumps(body)
         except (OSError, ValueError) as error:
             last = str(error)
@@ -114,9 +121,12 @@ def deploy(name, image, service, health_url):
     state_file = STATE_DIR / f"{name}.env"
 
     try:
-        target = f"{image}@{production_digest(image)}"
+        digest = production_digest(image)
     except (OSError, ValueError, KeyError) as error:
         raise DeployError(f"can't resolve {image}:production: {error}") from error
+    if not DIGEST.fullmatch(digest or ""):
+        raise DeployError(f"no valid digest for {image}:production: {digest}")
+    target = f"{image}@{digest}"
     current = deployed_image(state_file, var)
     if current == target:
         log(name, f"up to date, running {target}")
@@ -126,11 +136,16 @@ def deploy(name, image, service, health_url):
     docker("pull", "--quiet", target, capture=True)
     # The variable takes precedence over the state file, which changes only once
     # the deploy succeeds. Compose replaces the API only if the migration passes.
-    docker("compose", "-f", COMPOSE_FILE, "up", "--detach", service, env={**os.environ, var: target})
+    docker(
+        "compose", "-f", COMPOSE_FILE, "up", "--detach", service,
+        env={**os.environ, var: target},
+    )
 
     # Also catches a site.yaml run that put the old image back meanwhile.
     container = docker("compose", "-f", COMPOSE_FILE, "ps", "--quiet", service, capture=True)
-    running = docker("inspect", "--format", "{{.Image}}", container, capture=True) if container else None
+    running = None
+    if container:
+        running = docker("inspect", "--format", "{{.Image}}", container, capture=True)
     if running != docker("image", "inspect", "--format", "{{.Id}}", target, capture=True):
         raise DeployError(f"{service} isn't running {target}")
     version = wait_until_healthy(health_url)
@@ -142,7 +157,9 @@ def deploy(name, image, service, health_url):
     temporary.replace(state_file)
     log(name, f"deployed version {version}")
 
-    # A rollback pulls it again.
+    # A rollback pulls it again. When current is the reference a new server
+    # starts with (…:production), only that tag goes: the image stays under
+    # its digest reference.
     result = subprocess.run(["docker", "image", "rm", current], capture_output=True, text=True)
     if result.returncode != 0:
         log(name, f"couldn't remove the previous image: {result.stderr.strip()}", sys.stderr)

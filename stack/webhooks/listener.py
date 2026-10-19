@@ -39,13 +39,29 @@ class Handler(BaseHTTPRequestHandler):
         if not hmac.compare_digest(given.encode(), f"Bearer {token}".encode()):
             self.reply(401)
             return
-        (HOOKS_DIR / name / "requested").touch()
+        try:
+            (HOOKS_DIR / name / "requested").touch()
+        except OSError as error:
+            self.log_error("can't create the trigger file: %s", error)
+            self.reply(500)
+            return
         self.reply(202)
 
     def reply(self, status):
         self.send_response(status)
         self.send_header("Content-Length", "0")
         self.end_headers()
+
+    # Python's default names its version.
+    def version_string(self):
+        return "webhooks"
+
+    # Requests all come through Caddy, which replaces any X-Forwarded-For a
+    # client sends with the client's own address.
+    def address_string(self):
+        headers = getattr(self, "headers", None)
+        forwarded = headers.get("X-Forwarded-For") if headers else None
+        return forwarded or super().address_string()
 
 
 if __name__ == "__main__":
