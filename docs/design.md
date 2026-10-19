@@ -227,7 +227,7 @@ Still to do:
    - only ports 80 and 443 answer from outside, not Postgres;
    - the containers come back after a reboot;
    - running the playbook a second time reports no changes.
-5. Add the webhook listener and the deploy role. Then verify:
+5. **Done.** Add the webhook listener and the deploy role. Then verify:
    - the deploy hook answers 202 with the token, and 401 without it;
    - a trigger deploys `:production`, and a second one finds it up to date;
    - running the playbook a second time reports no changes.
