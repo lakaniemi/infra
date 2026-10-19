@@ -85,7 +85,10 @@ Configuration for the shared Hetzner server that runs my hobby projects' APIs an
 - **Docker** (Engine and Compose plugin, from Docker's apt repo):
   - default log rotation (`json-file` with `max-size`/`max-file`), so container logs can't fill the 40 GB disk;
   - the admin user isn't in the `docker` group, so Docker runs through `sudo` (`docker` group membership is effectively root);
-  - `restart: unless-stopped` on every service.
+  - `restart: unless-stopped` on every service;
+  - a weekly `docker image prune --all` (`docker-prune.timer`, `Persistent=true`), since Docker never removes old images itself: they'd pile up after every deploy and every pin change in `stack/`. Images of stopped containers, like the exited migrate containers, count as used and stay. Until the next prune, the previous app image is still there, so a rollback doesn't need a pull; after it, the rollback pulls the image again.
+    - `image prune` and not `system prune`, which would also delete the exited migrate containers, so that the next `site.yaml` run would recreate them and report changes.
+    - A per-deploy removal in deploy.py was tried first. Docker refuses to remove the last tag of an image that a container uses, which a new server's first deploy hits, and it would never clean up Caddy, Postgres or the listener's images.
 - **Other:** a 1 GB swap file as a safety margin, and the timezone set to UTC, which also makes the 04:00 reboot time UTC.
   - The base role uses only `ansible.builtin` modules, so the timezone is set through `/etc/localtime` and the SSH key is written with `copy`. `community.general` and `ansible.posix` would be pinned dependencies for a single module each.
 

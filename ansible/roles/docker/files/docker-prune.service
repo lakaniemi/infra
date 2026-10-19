@@ -1,0 +1,10 @@
+[Unit]
+Description=Remove Docker images that no container uses
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+# Images only: `docker system prune` would also delete the exited migrate
+# containers, and the next site.yaml run would recreate them.
+ExecStart=/usr/bin/docker image prune --all --force

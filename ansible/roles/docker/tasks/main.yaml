@@ -53,6 +53,27 @@
     state: started
   loop: [containerd, docker]
 
+# Old images otherwise stay forever: after deploys, and after the pins in
+# stack/compose.yaml change.
+- name: Install the image prune units
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: /etc/systemd/system/{{ item }}
+    owner: root
+    group: root
+    mode: "0644"
+  loop: [docker-prune.service, docker-prune.timer]
+  register: docker_prune_units
+  notify: Restart the image prune timer
+
+- name: Prune unused images weekly
+  ansible.builtin.systemd_service:
+    name: docker-prune.timer
+    enabled: true
+    state: started
+    # A reload alone isn't reported as a change.
+    daemon_reload: "{{ docker_prune_units is changed }}"
+
 # A changed daemon.json must apply before the stack role creates containers.
 - name: Apply Docker configuration changes now
   ansible.builtin.meta: flush_handlers
