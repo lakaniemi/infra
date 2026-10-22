@@ -5,6 +5,16 @@
 	}
 }
 
+# Placeholder until the personal website exists. The redirect is temporary
+# so browsers don't cache it in case www becomes the main address.
+lakaniemi.com {
+	respond 200
+}
+
+www.lakaniemi.com {
+	redir https://lakaniemi.com{uri}
+}
+
 webhooks.lakaniemi.com {
 	# The listener never reads request bodies.
 	request_body {
