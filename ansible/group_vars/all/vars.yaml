@@ -30,6 +30,10 @@ webhook_hooks: [deploy]
 # Also stored as a GitHub Actions secret in each project repo that deploys.
 webhook_deploy_token: "{{ vault_webhook_deploy_token }}"
 
+# TEMPORARY: remove after the ryijypalvelu migration.
+ryijypalvelu_demo_basic_auth_user: "{{ vault_ryijypalvelu_demo_basic_auth_user }}"
+ryijypalvelu_demo_basic_auth_hash: "{{ vault_ryijypalvelu_demo_basic_auth_hash }}"
+
 # Projects that deploy.py deploys from their image's :production tag. The image
 # each one runs is kept in /var/lib/deploy/<name>.env, which the project's
 # include in stack/compose.yaml reads.
