@@ -7,6 +7,8 @@ dns_service_hostnames:
   - www
   - life-app-api
   - webhooks
+  # TEMPORARY: remove after the ryijypalvelu migration (run with state: absent first).
+  - ryijypalvelu-demo
 
 # The domain sends and receives no mail; these stop others from spoofing it.
 dns_static_records:

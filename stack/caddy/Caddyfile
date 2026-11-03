@@ -23,6 +23,20 @@ webhooks.lakaniemi.com {
 	reverse_proxy webhooks:8080
 }
 
+# TEMPORARY: remove after the ryijypalvelu migration.
+# Caddy resolves the upstream per request, so it starts even while the
+# ryijypalvelu-demo container doesn't exist; requests then get a 502.
+ryijypalvelu-demo.lakaniemi.com {
+	basic_auth {
+		{$RYIJY_DEMO_BASIC_AUTH_USER} {$RYIJY_DEMO_BASIC_AUTH_HASH}
+	}
+	header X-Robots-Tag "noindex, nofollow"
+	request_body {
+		max_size 64MB
+	}
+	reverse_proxy ryijypalvelu-demo:80
+}
+
 life-app-api.lakaniemi.com {
 	reverse_proxy life-app-api:8080 {
 		# Holds requests while the API restarts instead of returning errors.
